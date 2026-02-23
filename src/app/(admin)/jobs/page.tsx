@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { format, subDays } from 'date-fns';
+import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import {
   Briefcase,
@@ -57,41 +57,13 @@ interface CantonCoverage {
   status: 'active' | 'warning' | 'inactive';
 }
 
-// ── Mock data (fallback when API is unavailable) ─────────────────────────
+// ── Default empty state ──────────────────────────────────────────────────
 
-const MOCK_IMPORT_HISTORY: ImportHistoryEntry[] = Array.from(
-  { length: 30 },
-  (_, i) => {
-    const date = subDays(new Date('2026-02-23'), 29 - i);
-    const base = 80 + Math.floor(Math.random() * 80);
-    const weekend = date.getDay() === 0 || date.getDay() === 6;
-    return {
-      date: date.toISOString().slice(0, 10),
-      count: weekend ? Math.floor(base * 0.3) : base,
-    };
-  },
-);
-
-const MOCK_CANTON_COVERAGE: CantonCoverage[] = [
-  { canton: 'Zurich', offers: 520, lastImport: '2026-02-23T08:30:00', status: 'active' },
-  { canton: 'Geneve', offers: 410, lastImport: '2026-02-23T08:30:00', status: 'active' },
-  { canton: 'Vaud', offers: 355, lastImport: '2026-02-23T08:30:00', status: 'active' },
-  { canton: 'Berne', offers: 290, lastImport: '2026-02-23T08:30:00', status: 'active' },
-  { canton: 'Bale', offers: 215, lastImport: '2026-02-23T08:30:00', status: 'active' },
-  { canton: 'Lucerne', offers: 142, lastImport: '2026-02-23T06:00:00', status: 'active' },
-  { canton: 'Valais', offers: 118, lastImport: '2026-02-22T20:00:00', status: 'warning' },
-  { canton: 'Fribourg', offers: 105, lastImport: '2026-02-23T08:30:00', status: 'active' },
-  { canton: 'Tessin', offers: 95, lastImport: '2026-02-22T18:00:00', status: 'warning' },
-  { canton: 'Neuchatel', offers: 78, lastImport: '2026-02-23T08:30:00', status: 'active' },
-  { canton: 'Argovie', offers: 68, lastImport: '2026-02-23T06:00:00', status: 'active' },
-  { canton: 'Soleure', offers: 54, lastImport: '2026-02-21T12:00:00', status: 'inactive' },
-];
-
-const MOCK_STATS: JobsStats = {
-  totalActive: MOCK_CANTON_COVERAGE.reduce((sum, c) => sum + c.offers, 0),
-  importedToday: 127,
-  totalApplications: 8420,
-  coveredCantons: MOCK_CANTON_COVERAGE.filter((c) => c.status !== 'inactive').length,
+const EMPTY_STATS: JobsStats = {
+  totalActive: 0,
+  importedToday: 0,
+  totalApplications: 0,
+  coveredCantons: 0,
 };
 
 // ── Status config for canton table ───────────────────────────────────────
@@ -192,9 +164,9 @@ export default function JobsPage() {
   const [isImporting, setIsImporting] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
-  const [stats, setStats] = useState<JobsStats>(MOCK_STATS);
-  const [importHistory, setImportHistory] = useState<ImportHistoryEntry[]>(MOCK_IMPORT_HISTORY);
-  const [cantonCoverage, setCantonCoverage] = useState<CantonCoverage[]>(MOCK_CANTON_COVERAGE);
+  const [stats, setStats] = useState<JobsStats>(EMPTY_STATS);
+  const [importHistory, setImportHistory] = useState<ImportHistoryEntry[]>([]);
+  const [cantonCoverage, setCantonCoverage] = useState<CantonCoverage[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -216,7 +188,7 @@ export default function JobsPage() {
         if (coverageResult.status === 'fulfilled' && coverageResult.value) {
           setCantonCoverage(coverageResult.value);
         }
-        // If any request fails, the mock data already in state is kept
+        // If any request fails, the empty state is kept
         setIsLoading(false);
       }
     }
@@ -245,29 +217,29 @@ export default function JobsPage() {
       title: 'Total offres actives',
       value: stats.totalActive.toLocaleString('fr-CH'),
       icon: Briefcase,
-      change: 5.2,
-      changeLabel: 'vs semaine derniere',
+      change: 0,
+      changeLabel: '',
     },
     {
       title: "Importees aujourd'hui",
       value: stats.importedToday.toString(),
       icon: Download,
-      change: 12.3,
-      changeLabel: 'vs hier',
+      change: 0,
+      changeLabel: '',
     },
     {
       title: 'Candidatures envoyees',
       value: stats.totalApplications.toLocaleString('fr-CH'),
       icon: FileText,
-      change: 8.1,
-      changeLabel: 'vs mois dernier',
+      change: 0,
+      changeLabel: '',
     },
     {
       title: 'Cantons couverts',
       value: `${stats.coveredCantons}/${totalCantons}`,
       icon: MapPin,
       change: 0,
-      changeLabel: 'stable',
+      changeLabel: '',
     },
   ];
 

@@ -34,95 +34,77 @@ import {
   BarChart3,
 } from 'lucide-react';
 
-// ── Currency formatter ────────────────────────────────────────────────
+// -- Currency formatter -------------------------------------------------------
 const chf = new Intl.NumberFormat('fr-CH', {
   style: 'currency',
   currency: 'CHF',
 });
 
-// ── Mock data ─────────────────────────────────────────────────────────
+// -- Backend response types ---------------------------------------------------
+// These mirror the exact shapes returned by the backend endpoints.
 
-const mockRevenueMonthly = [
-  { mois: 'Mar 25', abonnements: 2800, commissions: 620 },
-  { mois: 'Avr 25', abonnements: 2950, commissions: 680 },
-  { mois: 'Mai 25', abonnements: 3100, commissions: 710 },
-  { mois: 'Juin 25', abonnements: 3200, commissions: 750 },
-  { mois: 'Juil 25', abonnements: 3050, commissions: 800 },
-  { mois: 'Août 25', abonnements: 3300, commissions: 830 },
-  { mois: 'Sep 25', abonnements: 3450, commissions: 860 },
-  { mois: 'Oct 25', abonnements: 3600, commissions: 910 },
-  { mois: 'Nov 25', abonnements: 3750, commissions: 940 },
-  { mois: 'Déc 25', abonnements: 3900, commissions: 980 },
-  { mois: 'Jan 26', abonnements: 4200, commissions: 1020 },
-  { mois: 'Fév 26', abonnements: 4560, commissions: 1080 },
-];
+/** GET /admin/revenue/overview */
+interface RevenueOverviewResponse {
+  mrr: number;
+  arr: number;
+  ltv: number;
+  churnRate: number;
+  cancelledLast30d: number;
+  totalActiveSubscriptions: number;
+  planBreakdown: Array<{ plan: string; count: number; revenue: number }>;
+  partnerRevenueTotal: number;
+}
 
-const mockSubscriptions = [
-  { id: 1, user: 'Sophie Müller', email: 'sophie.m@gmail.com', plan: 'Mensuel', montant: 9.9, renouvellement: '2026-03-15', statut: 'Actif' },
-  { id: 2, user: 'Marc Dubois', email: 'marc.d@outlook.com', plan: 'Annuel', montant: 89.9, renouvellement: '2027-01-10', statut: 'Actif' },
-  { id: 3, user: 'Laura Fischer', email: 'l.fischer@bluewin.ch', plan: 'Mensuel', montant: 9.9, renouvellement: '2026-03-08', statut: 'Actif' },
-  { id: 4, user: 'Thomas Keller', email: 't.keller@proton.me', plan: 'Annuel', montant: 89.9, renouvellement: '2026-11-22', statut: 'Actif' },
-  { id: 5, user: 'Anna Brunner', email: 'anna.b@gmail.com', plan: 'Mensuel', montant: 9.9, renouvellement: '2026-03-20', statut: 'Actif' },
-  { id: 6, user: 'David Schmid', email: 'd.schmid@yahoo.com', plan: 'Mensuel', montant: 9.9, renouvellement: '2026-03-12', statut: 'En pause' },
-  { id: 7, user: 'Elena Rossi', email: 'elena.r@gmail.com', plan: 'Annuel', montant: 89.9, renouvellement: '2026-08-05', statut: 'Actif' },
-  { id: 8, user: 'Nicolas Weber', email: 'n.weber@sunrise.ch', plan: 'Mensuel', montant: 9.9, renouvellement: '2026-03-18', statut: 'Actif' },
-  { id: 9, user: 'Julie Martin', email: 'j.martin@icloud.com', plan: 'Annuel', montant: 89.9, renouvellement: '2027-02-14', statut: 'Actif' },
-  { id: 10, user: 'Patrick Huber', email: 'p.huber@gmx.ch', plan: 'Mensuel', montant: 9.9, renouvellement: '2026-03-25', statut: 'Actif' },
-  { id: 11, user: 'Sarah Meier', email: 's.meier@bluewin.ch', plan: 'Mensuel', montant: 9.9, renouvellement: '2026-03-05', statut: 'Expiré' },
-  { id: 12, user: 'Lucas Favre', email: 'l.favre@proton.me', plan: 'Annuel', montant: 89.9, renouvellement: '2026-06-30', statut: 'Actif' },
-  { id: 13, user: 'Isabelle Roth', email: 'i.roth@gmail.com', plan: 'Mensuel', montant: 9.9, renouvellement: '2026-03-28', statut: 'Actif' },
-  { id: 14, user: 'Michael Bauer', email: 'm.bauer@outlook.com', plan: 'Mensuel', montant: 9.9, renouvellement: '2026-03-10', statut: 'Actif' },
-  { id: 15, user: 'Céline Wyss', email: 'c.wyss@sunrise.ch', plan: 'Annuel', montant: 89.9, renouvellement: '2026-09-15', statut: 'Actif' },
-];
+/** GET /admin/revenue/subscriptions — flat array of these objects */
+interface SubscriptionResponse {
+  id: string;
+  userId: string;
+  userEmail: string;
+  userName: string;
+  plan: string;
+  status: string;
+  store: string | null;
+  currentPeriodEnd: string | null;
+  originalPurchaseDate: string | null;
+  monthlyRevenue: number;
+  createdAt: string;
+}
 
-const mockCommissions = [
-  { id: 1, partenaire: 'CA next bank', type: 'CPA', clics: 3420, conversions: 187, montant: 4675 },
-  { id: 2, partenaire: 'UBS KeyClub', type: 'CPL', clics: 2890, conversions: 156, montant: 3120 },
-  { id: 3, partenaire: 'Alpian', type: 'Revenue Share', clics: 1560, conversions: 89, montant: 2670 },
-  { id: 4, partenaire: 'Yuh', type: 'CPA', clics: 4210, conversions: 234, montant: 5850 },
-  { id: 5, partenaire: 'Baloise Assurance', type: 'CPL', clics: 980, conversions: 45, montant: 1350 },
-  { id: 6, partenaire: 'CSS Santé', type: 'Revenue Share', clics: 1230, conversions: 67, montant: 2010 },
-];
+/** GET /admin/revenue/partners */
+interface PartnerRevenueItem {
+  partnerId: string;
+  partnerName: string;
+  totalClicks: number;
+  totalConversions: number;
+  totalRevenue: number;
+  totalPaidOut: number;
+}
 
-const mockProjections = [
-  { mois: 'Mar 25', réel: 3420, projeté: null },
-  { mois: 'Avr 25', réel: 3630, projeté: null },
-  { mois: 'Mai 25', réel: 3810, projeté: null },
-  { mois: 'Juin 25', réel: 3950, projeté: null },
-  { mois: 'Juil 25', réel: 3850, projeté: null },
-  { mois: 'Août 25', réel: 4130, projeté: null },
-  { mois: 'Sep 25', réel: 4310, projeté: null },
-  { mois: 'Oct 25', réel: 4510, projeté: null },
-  { mois: 'Nov 25', réel: 4690, projeté: null },
-  { mois: 'Déc 25', réel: 4880, projeté: null },
-  { mois: 'Jan 26', réel: 5220, projeté: 5220 },
-  { mois: 'Fév 26', réel: 5640, projeté: 5640 },
-  { mois: 'Mar 26', réel: null, projeté: 5920 },
-  { mois: 'Avr 26', réel: null, projeté: 6210 },
-  { mois: 'Mai 26', réel: null, projeté: 6530 },
-  { mois: 'Juin 26', réel: null, projeté: 6870 },
-  { mois: 'Juil 26', réel: null, projeté: 7140 },
-  { mois: 'Août 26', réel: null, projeté: 7480 },
-  { mois: 'Sep 26', réel: null, projeté: 7850 },
-  { mois: 'Oct 26', réel: null, projeté: 8240 },
-  { mois: 'Nov 26', réel: null, projeté: 8650 },
-  { mois: 'Déc 26', réel: null, projeté: 9080 },
-  { mois: 'Jan 27', réel: null, projeté: 9530 },
-  { mois: 'Fév 27', réel: null, projeté: 10020 },
-];
+interface PartnersResponse {
+  partners: PartnerRevenueItem[];
+  totals: {
+    clicks: number;
+    conversions: number;
+    revenue: number;
+    paidOut: number;
+  };
+}
 
-const mockKPIs = {
-  mrr: 4560,
-  mrrVariation: 8.4,
-  arr: 54720,
-  arrVariation: 12.1,
-  ltv: 156,
-  ltvVariation: 3.8,
-  churn: 3.2,
-  churnVariation: -0.5,
-};
+/** GET /admin/revenue/projections */
+interface ProjectionItem {
+  month: number;
+  label: string;       // "YYYY-MM"
+  projectedMRR: number;
+  projectedARR: number;
+}
 
-// ── Types ─────────────────────────────────────────────────────────────
+interface ProjectionsResponse {
+  currentMRR: number;
+  monthlyGrowthRate: number;
+  projections: ProjectionItem[];
+}
+
+// -- Frontend display types ---------------------------------------------------
 
 interface KPIData {
   mrr: number;
@@ -142,7 +124,7 @@ interface RevenueMonth {
 }
 
 interface Subscription {
-  id: number;
+  id: string | number;
   user: string;
   email: string;
   plan: string;
@@ -152,7 +134,7 @@ interface Subscription {
 }
 
 interface Commission {
-  id: number;
+  id: string | number;
   partenaire: string;
   type: string;
   clics: number;
@@ -166,9 +148,69 @@ interface ProjectionMonth {
   projeté: number | null;
 }
 
-// ── Variation badge helper ────────────────────────────────────────────
+// -- Default empty state -------------------------------------------------------
+
+const emptyKPIs: KPIData = {
+  mrr: 0,
+  mrrVariation: 0,
+  arr: 0,
+  arrVariation: 0,
+  ltv: 0,
+  ltvVariation: 0,
+  churn: 0,
+  churnVariation: 0,
+};
+
+// -- Helpers ------------------------------------------------------------------
+
+/** Format a plan slug from the backend (e.g. "monthly", "weekly") for display */
+function formatPlanLabel(plan: string): string {
+  switch (plan.toLowerCase()) {
+    case 'monthly':
+      return 'Mensuel';
+    case 'weekly':
+      return 'Hebdomadaire';
+    case 'yearly':
+    case 'annual':
+      return 'Annuel';
+    default:
+      return plan;
+  }
+}
+
+/** Map backend subscription status to the French display label */
+function formatStatusLabel(status: string): string {
+  switch (status.toLowerCase()) {
+    case 'active':
+      return 'Actif';
+    case 'paused':
+      return 'En pause';
+    case 'canceled':
+    case 'cancelled':
+      return 'Annulé';
+    case 'expired':
+      return 'Expiré';
+    default:
+      return status;
+  }
+}
+
+/** Format a "YYYY-MM" label to a short French label like "Mar 26" */
+function formatProjectionLabel(label: string): string {
+  const [yearStr, monthStr] = label.split('-');
+  const monthNames = [
+    'Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin',
+    'Juil', 'Août', 'Sep', 'Oct', 'Nov', 'Déc',
+  ];
+  const monthIndex = parseInt(monthStr, 10) - 1;
+  const shortYear = yearStr.slice(2);
+  return `${monthNames[monthIndex] ?? monthStr} ${shortYear}`;
+}
+
+// -- Variation badge helper ---------------------------------------------------
 
 function VariationBadge({ value, inverse = false }: { value: number; inverse?: boolean }) {
+  if (value === 0) return null;
   const isPositive = inverse ? value < 0 : value > 0;
   return (
     <span
@@ -187,7 +229,7 @@ function VariationBadge({ value, inverse = false }: { value: number; inverse?: b
   );
 }
 
-// ── Statut badge color mapping ────────────────────────────────────────
+// -- Statut badge color mapping -----------------------------------------------
 
 function StatutBadge({ statut }: { statut: string }) {
   const variant =
@@ -199,40 +241,100 @@ function StatutBadge({ statut }: { statut: string }) {
   return <Badge variant={variant}>{statut}</Badge>;
 }
 
-// ── Main page component ───────────────────────────────────────────────
+// -- Main page component ------------------------------------------------------
 
 export default function RevenuePage() {
-  const [kpis, setKpis] = useState<KPIData>(mockKPIs);
-  const [revenueData, setRevenueData] = useState<RevenueMonth[]>(mockRevenueMonthly);
-  const [subscriptions, setSubscriptions] = useState<Subscription[]>(mockSubscriptions);
-  const [commissions, setCommissions] = useState<Commission[]>(mockCommissions);
-  const [projections, setProjections] = useState<ProjectionMonth[]>(mockProjections);
+  const [kpis, setKpis] = useState<KPIData>(emptyKPIs);
+  const [revenueData, setRevenueData] = useState<RevenueMonth[]>([]);
+  const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
+  const [commissions, setCommissions] = useState<Commission[]>([]);
+  const [projections, setProjections] = useState<ProjectionMonth[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function fetchData() {
       try {
-        const [overviewRes, subsRes, partnersRes, projRes] = await Promise.allSettled([
-          get<{ data: KPIData }>('/admin/revenue/overview'),
-          get<{ data: Subscription[] }>('/admin/revenue/subscriptions'),
-          get<{ data: Commission[] }>('/admin/revenue/partners'),
-          get<{ data: ProjectionMonth[] }>('/admin/revenue/projections'),
+        const [overviewRes, subsRes, partnersRes, projRes, monthlyRes] = await Promise.allSettled([
+          get<RevenueOverviewResponse>('/admin/revenue/overview'),
+          get<SubscriptionResponse[]>('/admin/revenue/subscriptions'),
+          get<PartnersResponse>('/admin/revenue/partners'),
+          get<ProjectionsResponse>('/admin/revenue/projections'),
+          get<RevenueMonth[]>('/admin/revenue/monthly-breakdown'),
         ]);
 
-        if (overviewRes.status === 'fulfilled' && overviewRes.value?.data) {
-          setKpis(overviewRes.value.data);
+        // --- Overview KPIs ---
+        // Backend returns flat: { mrr, arr, ltv, churnRate, ... }
+        // The API helper already unwraps axios response.data, so no .data wrapper.
+        if (overviewRes.status === 'fulfilled' && overviewRes.value) {
+          const o = overviewRes.value;
+          setKpis({
+            mrr: o.mrr,
+            arr: o.arr,
+            ltv: o.ltv,
+            // Backend field is "churnRate", frontend uses "churn"
+            churn: o.churnRate,
+            // Backend does not return month-over-month variation percentages.
+            // Set to 0 so the VariationBadge hides (returns null when value === 0).
+            mrrVariation: 0,
+            arrVariation: 0,
+            ltvVariation: 0,
+            churnVariation: 0,
+          });
         }
-        if (subsRes.status === 'fulfilled' && subsRes.value?.data) {
-          setSubscriptions(subsRes.value.data);
+
+        // --- Subscriptions ---
+        // Backend returns a flat array of SubscriptionResponse objects.
+        // Map to the frontend Subscription shape used by the table.
+        if (subsRes.status === 'fulfilled' && Array.isArray(subsRes.value) && subsRes.value.length > 0) {
+          setSubscriptions(
+            subsRes.value.map((s) => ({
+              id: s.id,
+              user: s.userName || s.userEmail,
+              email: s.userEmail,
+              plan: formatPlanLabel(s.plan),
+              montant: s.monthlyRevenue,
+              // Use currentPeriodEnd as the renewal date; fall back to originalPurchaseDate
+              renouvellement: s.currentPeriodEnd || s.originalPurchaseDate || s.createdAt,
+              statut: formatStatusLabel(s.status),
+            }))
+          );
         }
-        if (partnersRes.status === 'fulfilled' && partnersRes.value?.data) {
-          setCommissions(partnersRes.value.data);
+
+        // --- Partner commissions ---
+        // Backend returns { partners: [...], totals: {...} }
+        if (partnersRes.status === 'fulfilled' && partnersRes.value?.partners?.length > 0) {
+          setCommissions(
+            partnersRes.value.partners.map((p) => ({
+              id: p.partnerId,
+              partenaire: p.partnerName,
+              // Backend doesn't return a commission type; use a generic label
+              type: 'Commission',
+              clics: p.totalClicks,
+              conversions: p.totalConversions,
+              montant: p.totalRevenue,
+            }))
+          );
         }
-        if (projRes.status === 'fulfilled' && projRes.value?.data) {
-          setProjections(projRes.value.data);
+
+        // --- Projections ---
+        // Backend returns { currentMRR, monthlyGrowthRate, projections: [{ month, label, projectedMRR, projectedARR }] }
+        if (projRes.status === 'fulfilled' && projRes.value?.projections?.length > 0) {
+          const currentMRR = projRes.value.currentMRR;
+          setProjections(
+            projRes.value.projections.map((p, idx) => ({
+              mois: formatProjectionLabel(p.label),
+              réel: idx === 0 ? currentMRR : null,
+              projeté: p.projectedMRR,
+            }))
+          );
+        }
+
+        // --- Monthly breakdown (area chart) ---
+        if (monthlyRes.status === 'fulfilled' && Array.isArray(monthlyRes.value) && monthlyRes.value.length > 0) {
+          setRevenueData(monthlyRes.value);
         }
       } catch {
-        // Keep mock data on error
+        // Keep empty state on error
       } finally {
         setLoading(false);
       }
@@ -300,7 +402,9 @@ export default function RevenuePage() {
                   <span className="text-2xl font-bold">{kpi.value}</span>
                   <div className="flex items-center gap-1.5">
                     <VariationBadge value={kpi.variation} inverse={kpi.inverse} />
-                    <span className="text-xs text-muted-foreground">vs mois dernier</span>
+                    {kpi.variation !== 0 && (
+                      <span className="text-xs text-muted-foreground">vs mois dernier</span>
+                    )}
                   </div>
                 </div>
                 <div className={`rounded-lg p-2.5 ${kpi.bg}`}>
@@ -384,7 +488,7 @@ export default function RevenuePage() {
           <TabsTrigger value="projections">Projections</TabsTrigger>
         </TabsList>
 
-        {/* ── Abonnements Tab ────────────────────────────────────────── */}
+        {/* -- Abonnements Tab ------------------------------------------------ */}
         <TabsContent value="abonnements">
           <Card>
             <CardHeader>
@@ -430,7 +534,7 @@ export default function RevenuePage() {
           </Card>
         </TabsContent>
 
-        {/* ── Commissions Tab ────────────────────────────────────────── */}
+        {/* -- Commissions Tab ------------------------------------------------ */}
         <TabsContent value="commissions">
           <Card>
             <CardHeader>
@@ -471,7 +575,7 @@ export default function RevenuePage() {
           </Card>
         </TabsContent>
 
-        {/* ── Projections Tab ────────────────────────────────────────── */}
+        {/* -- Projections Tab ------------------------------------------------ */}
         <TabsContent value="projections">
           <Card>
             <CardHeader>

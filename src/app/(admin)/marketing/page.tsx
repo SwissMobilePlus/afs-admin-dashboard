@@ -40,7 +40,7 @@ import { get } from '@/lib/api';
 // ── Types ────────────────────────────────────────────────────────────────
 
 type CampaignType = 'push' | 'email' | 'in-app';
-type CampaignStatus = 'brouillon' | 'programmee' | 'envoyee' | 'annulee';
+type CampaignStatus = 'brouillon' | 'programmee' | 'en_cours' | 'envoyee' | 'annulee';
 
 interface Campaign {
   id: string;
@@ -53,90 +53,18 @@ interface Campaign {
   clicks: number;
 }
 
-// ── Mock / fallback data ─────────────────────────────────────────────────
+// ── API response type for campaign stats ─────────────────────────────────
 
-const MOCK_CAMPAIGNS: Campaign[] = [
-  {
-    id: '1',
-    title: 'Nouvelles offres premium disponibles',
-    type: 'push',
-    date: '2026-02-20T10:00:00',
-    audience: 3420,
-    status: 'envoyee',
-    opens: 1856,
-    clicks: 423,
-  },
-  {
-    id: '2',
-    title: 'Marché de l\'emploi suisse - Tendances février 2026',
-    type: 'email',
-    date: '2026-02-18T09:00:00',
-    audience: 5200,
-    status: 'envoyee',
-    opens: 2340,
-    clicks: 876,
-  },
-  {
-    id: '3',
-    title: 'Score SwissReady : Découvrez votre compatibilité',
-    type: 'in-app',
-    date: '2026-02-15T14:30:00',
-    audience: 8100,
-    status: 'envoyee',
-    opens: 5670,
-    clicks: 2130,
-  },
-  {
-    id: '4',
-    title: 'Offre partenaire : Formation professionnelle -20%',
-    type: 'email',
-    date: '2026-02-25T08:00:00',
-    audience: 2800,
-    status: 'programmee',
-    opens: 0,
-    clicks: 0,
-  },
-  {
-    id: '5',
-    title: 'Alerte emploi : 150 nouvelles offres à Genève',
-    type: 'push',
-    date: '2026-02-12T16:00:00',
-    audience: 1950,
-    status: 'envoyee',
-    opens: 1287,
-    clicks: 543,
-  },
-  {
-    id: '6',
-    title: 'Bienvenue sur AFS - Guide de démarrage',
-    type: 'email',
-    date: '2026-02-22T07:00:00',
-    audience: 450,
-    status: 'envoyee',
-    opens: 312,
-    clicks: 189,
-  },
-  {
-    id: '7',
-    title: 'Mise à jour : Nouvelles fonctionnalités IA',
-    type: 'in-app',
-    date: '2026-02-28T10:00:00',
-    audience: 8100,
-    status: 'brouillon',
-    opens: 0,
-    clicks: 0,
-  },
-  {
-    id: '8',
-    title: 'Rappel : Salon de l\'emploi Bâle 2026',
-    type: 'push',
-    date: '2026-02-10T12:00:00',
-    audience: 620,
-    status: 'annulee',
-    opens: 0,
-    clicks: 0,
-  },
-];
+interface CampaignStatsResponse {
+  totalSent: number;
+  totalSentChange: number;
+  avgOpenRate: number;
+  avgOpenRateChange: number;
+  avgClickRate: number;
+  avgClickRateChange: number;
+  totalReached: number;
+  totalReachedChange: number;
+}
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -149,6 +77,7 @@ const typeConfig: Record<CampaignType, { label: string; icon: React.ComponentTyp
 const statusConfig: Record<CampaignStatus, { label: string; color: string }> = {
   brouillon: { label: 'Brouillon', color: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400' },
   programmee: { label: 'Programmée', color: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400' },
+  en_cours: { label: 'En cours', color: 'bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-400' },
   envoyee: { label: 'Envoyée', color: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400' },
   annulee: { label: 'Annulée', color: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400' },
 };
@@ -167,28 +96,44 @@ function normalizeStatus(status: string): CampaignStatus {
   const statusMap: Record<string, CampaignStatus> = {
     draft: 'brouillon',
     scheduled: 'programmee',
+    sending: 'en_cours',
     sent: 'envoyee',
     cancelled: 'annulee',
     // Already-French values pass through
     brouillon: 'brouillon',
     programmee: 'programmee',
+    en_cours: 'en_cours',
     envoyee: 'envoyee',
     annulee: 'annulee',
   };
   return statusMap[status] || 'brouillon';
 }
 
-/** Normalize a raw campaign object from the API into our local Campaign type */
+/** Normalize a raw campaign object from the API into our local Campaign type.
+ *
+ * Prisma Campaign model fields (camelCase):
+ *   id, title, body, type, targetFilter, status,
+ *   scheduledAt, sentAt, createdAt, updatedAt,
+ *   sentCount, openCount, clickCount, createdById, createdBy
+ *
+ * Note: The model has no dedicated "audience" field.
+ * We use `sentCount` as the audience/reach figure for sent campaigns.
+ */
 function normalizeCampaign(raw: Record<string, unknown>): Campaign {
+  // Prefer sentAt > scheduledAt > createdAt for the display date (all camelCase from Prisma)
+  const date = String(raw.sentAt ?? raw.scheduledAt ?? raw.createdAt ?? '');
+
   return {
     id: String(raw.id ?? ''),
     title: String(raw.title ?? ''),
     type: normalizeType(String(raw.type ?? 'email')),
-    date: String(raw.date ?? raw.created_at ?? raw.scheduled_at ?? ''),
-    audience: Number(raw.audience ?? 0),
+    date,
+    // No "audience" field in Prisma model; use sentCount as the reach metric
+    audience: Number(raw.sentCount ?? 0),
     status: normalizeStatus(String(raw.status ?? 'draft')),
-    opens: Number(raw.opens ?? 0),
-    clicks: Number(raw.clicks ?? 0),
+    // Backend returns openCount / clickCount (not opens / clicks)
+    opens: Number(raw.openCount ?? 0),
+    clicks: Number(raw.clickCount ?? 0),
   };
 }
 
@@ -227,14 +172,16 @@ function TableSkeleton() {
 // ── Page Component ───────────────────────────────────────────────────────
 
 export default function MarketingPage() {
-  const [campaigns, setCampaigns] = useState<Campaign[]>(MOCK_CAMPAIGNS);
+  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
+  const [campaignStats, setCampaignStats] = useState<CampaignStatsResponse | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function fetchData() {
       try {
-        const [campaignsRes] = await Promise.allSettled([
+        const [campaignsRes, statsRes] = await Promise.allSettled([
           get<{ campaigns: Campaign[] } | Campaign[]>('/admin/campaigns'),
+          get<CampaignStatsResponse>('/admin/campaigns/stats'),
         ]);
 
         if (campaignsRes.status === 'fulfilled' && campaignsRes.value) {
@@ -250,10 +197,13 @@ export default function MarketingPage() {
           if (rawList.length > 0) {
             setCampaigns(rawList.map(normalizeCampaign));
           }
-          // If rawList is empty, keep MOCK_CAMPAIGNS as fallback
+        }
+
+        if (statsRes.status === 'fulfilled' && statsRes.value) {
+          setCampaignStats(statsRes.value);
         }
       } catch {
-        // Keep mock data on error
+        // Keep empty state on error
       } finally {
         setLoading(false);
       }
@@ -262,25 +212,28 @@ export default function MarketingPage() {
     fetchData();
   }, []);
 
-  // ── Stats calculations (computed from current campaigns state) ────────
+  // ── Stats calculations ────────────────────────────────────────────────
+  // Use API stats if available, otherwise compute from campaign list
 
   const sentCampaigns = campaigns.filter((c) => c.status === 'envoyee');
-  const totalSent = sentCampaigns.length;
-  const avgOpenRate =
+  const totalSent = campaignStats?.totalSent ?? sentCampaigns.length;
+  const avgOpenRate = campaignStats?.avgOpenRate ?? (
     sentCampaigns.length > 0
       ? sentCampaigns.reduce((acc, c) => acc + (c.audience > 0 ? (c.opens / c.audience) * 100 : 0), 0) / sentCampaigns.length
-      : 0;
-  const avgClickRate =
+      : 0
+  );
+  const avgClickRate = campaignStats?.avgClickRate ?? (
     sentCampaigns.length > 0
       ? sentCampaigns.reduce((acc, c) => acc + (c.audience > 0 ? (c.clicks / c.audience) * 100 : 0), 0) / sentCampaigns.length
-      : 0;
-  const totalReached = sentCampaigns.reduce((acc, c) => acc + c.audience, 0);
+      : 0
+  );
+  const totalReached = campaignStats?.totalReached ?? sentCampaigns.reduce((acc, c) => acc + c.audience, 0);
 
   const stats = [
-    { title: 'Campagnes envoyées', value: totalSent, icon: Send, change: 12.5, changeLabel: 'vs mois dernier' },
-    { title: 'Taux d\'ouverture moyen', value: `${avgOpenRate.toFixed(1)}%`, icon: Eye, change: 3.2, changeLabel: 'vs mois dernier' },
-    { title: 'Taux de clic moyen', value: `${avgClickRate.toFixed(1)}%`, icon: MousePointerClick, change: -1.8, changeLabel: 'vs mois dernier' },
-    { title: 'Utilisateurs atteints', value: totalReached.toLocaleString('fr-CH'), icon: Users, change: 8.7, changeLabel: 'vs mois dernier' },
+    { title: 'Campagnes envoyées', value: totalSent, icon: Send, change: campaignStats?.totalSentChange ?? 0, changeLabel: campaignStats ? 'vs mois dernier' : '' },
+    { title: 'Taux d\'ouverture moyen', value: `${avgOpenRate.toFixed(1)}%`, icon: Eye, change: campaignStats?.avgOpenRateChange ?? 0, changeLabel: campaignStats ? 'vs mois dernier' : '' },
+    { title: 'Taux de clic moyen', value: `${avgClickRate.toFixed(1)}%`, icon: MousePointerClick, change: campaignStats?.avgClickRateChange ?? 0, changeLabel: campaignStats ? 'vs mois dernier' : '' },
+    { title: 'Utilisateurs atteints', value: totalReached.toLocaleString('fr-CH'), icon: Users, change: campaignStats?.totalReachedChange ?? 0, changeLabel: campaignStats ? 'vs mois dernier' : '' },
   ];
 
   // ── Loading state ──────────────────────────────────────────────────────
@@ -343,6 +296,7 @@ export default function MarketingPage() {
         {stats.map((stat) => {
           const Icon = stat.icon;
           const isPositive = stat.change >= 0;
+          const isZero = stat.change === 0;
           return (
             <Card key={stat.title} className="group relative overflow-hidden py-5 transition-all duration-200 hover:shadow-md hover:border-border/80">
               <CardContent className="flex items-start justify-between gap-4">
@@ -353,19 +307,21 @@ export default function MarketingPage() {
                   <span className="text-2xl font-bold tracking-tight text-card-foreground">
                     {stat.value}
                   </span>
-                  <div className="flex items-center gap-1.5 mt-0.5">
-                    <span
-                      className={`inline-flex items-center gap-0.5 text-xs font-medium rounded-full px-1.5 py-0.5 ${
-                        isPositive
-                          ? 'text-emerald-700 bg-emerald-50 dark:text-emerald-400 dark:bg-emerald-950/50'
-                          : 'text-red-700 bg-red-50 dark:text-red-400 dark:bg-red-950/50'
-                      }`}
-                    >
-                      <span className="text-[10px]">{isPositive ? '\u2191' : '\u2193'}</span>
-                      {Math.abs(stat.change).toFixed(1)}%
-                    </span>
-                    <span className="text-xs text-muted-foreground">{stat.changeLabel}</span>
-                  </div>
+                  {!isZero && (
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      <span
+                        className={`inline-flex items-center gap-0.5 text-xs font-medium rounded-full px-1.5 py-0.5 ${
+                          isPositive
+                            ? 'text-emerald-700 bg-emerald-50 dark:text-emerald-400 dark:bg-emerald-950/50'
+                            : 'text-red-700 bg-red-50 dark:text-red-400 dark:bg-red-950/50'
+                        }`}
+                      >
+                        <span className="text-[10px]">{isPositive ? '\u2191' : '\u2193'}</span>
+                        {Math.abs(stat.change).toFixed(1)}%
+                      </span>
+                      <span className="text-xs text-muted-foreground">{stat.changeLabel}</span>
+                    </div>
+                  )}
                 </div>
                 <div className="flex-shrink-0 rounded-lg bg-muted/50 p-2.5 text-muted-foreground transition-colors group-hover:bg-primary/10 group-hover:text-primary">
                   <Icon className="h-5 w-5" />
@@ -392,6 +348,13 @@ export default function MarketingPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
+            {campaigns.length === 0 && (
+              <TableRow>
+                <TableCell colSpan={8} className="text-center text-muted-foreground py-12">
+                  Aucune campagne trouvée
+                </TableCell>
+              </TableRow>
+            )}
             {campaigns.map((campaign) => {
               const typeInfo = typeConfig[campaign.type];
               const statusInfo = statusConfig[campaign.status];

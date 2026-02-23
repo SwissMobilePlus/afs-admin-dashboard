@@ -40,6 +40,7 @@ const chf = new Intl.NumberFormat('fr-CH', {
 
 // ── Types ─────────────────────────────────────────────────────────────
 
+/** Frontend partner shape used for display */
 interface Partner {
   id: string;
   nom: string;
@@ -57,106 +58,82 @@ interface Partner {
   description: string;
 }
 
-// ── Mock data ─────────────────────────────────────────────────────────
+/**
+ * Shape returned by GET /admin/partners (flat array of these objects).
+ * Based on admin-partners.service.ts listPartners().
+ */
+interface ApiPartner {
+  id: string;
+  serviceId: string;
+  name: string;
+  description: string;
+  logoUrl: string | null;
+  websiteUrl: string | null;
+  promoCode: string | null;
+  promoLabel: string | null;
+  bonusOffer: string | null;
+  contactEmail: string | null;
+  contactPhone: string | null;
+  order: number;
+  active: boolean;
+  featured: boolean;
+  createdAt: string;
+  updatedAt: string;
+  service: {
+    id: string;
+    title: string;
+    slug: string;
+  };
+  _count: {
+    clicks: number;
+    commissions: number;
+    payouts: number;
+  };
+  stats: {
+    totalClicks: number;
+    conversions: number;
+    conversionRate: number;
+    totalRevenue: number;
+  };
+}
 
-const mockPartners: Partner[] = [
-  {
-    id: '1',
-    nom: 'CA next bank',
-    categorie: 'Banque',
-    siteWeb: 'https://www.ca-nextbank.ch',
-    clics: 3420,
-    conversions: 187,
-    revenue: 4675,
-    tauxConversion: 5.47,
-    statut: 'Actif',
-    couleur: '#006a4e',
-    commissionType: 'CPA',
-    commissionRate: 25,
-    promoCode: 'AFS-CA25',
-    description: 'Partenaire bancaire principal pour les comptes courants et cartes de crédit.',
-  },
-  {
-    id: '2',
-    nom: 'UBS KeyClub',
-    categorie: 'Banque',
-    siteWeb: 'https://www.ubs.com',
-    clics: 2890,
-    conversions: 156,
-    revenue: 3120,
-    tauxConversion: 5.4,
-    statut: 'Actif',
-    couleur: '#e60000',
-    commissionType: 'CPL',
-    commissionRate: 20,
-    promoCode: 'AFS-UBS20',
-    description: 'Programme de fidélité UBS avec commissions sur les leads qualifiés.',
-  },
-  {
-    id: '3',
-    nom: 'Alpian',
-    categorie: 'Banque',
-    siteWeb: 'https://www.alpian.com',
-    clics: 1560,
-    conversions: 89,
-    revenue: 2670,
-    tauxConversion: 5.71,
-    statut: 'Actif',
-    couleur: '#1a237e',
-    commissionType: 'Revenue Share',
-    commissionRate: 15,
-    promoCode: 'AFS-ALP15',
-    description: 'Banque digitale suisse avec gestion de patrimoine personnalisée.',
-  },
-  {
-    id: '4',
-    nom: 'Yuh',
-    categorie: 'Banque',
-    siteWeb: 'https://www.yuh.com',
-    clics: 4210,
-    conversions: 234,
-    revenue: 5850,
-    tauxConversion: 5.56,
-    statut: 'Actif',
-    couleur: '#ff6600',
-    commissionType: 'CPA',
-    commissionRate: 25,
-    promoCode: 'AFS-YUH25',
-    description: 'Application bancaire mobile suisse - investissement et paiement.',
-  },
-  {
-    id: '5',
-    nom: 'Baloise Assurance',
-    categorie: 'Assurance',
-    siteWeb: 'https://www.baloise.ch',
-    clics: 980,
-    conversions: 45,
-    revenue: 1350,
-    tauxConversion: 4.59,
-    statut: 'Actif',
-    couleur: '#004990',
-    commissionType: 'CPL',
-    commissionRate: 30,
-    promoCode: 'AFS-BAL30',
-    description: 'Solutions d\'assurance vie et non-vie pour particuliers.',
-  },
-  {
-    id: '6',
-    nom: 'CSS Santé',
-    categorie: 'Assurance',
-    siteWeb: 'https://www.css.ch',
-    clics: 1230,
-    conversions: 67,
-    revenue: 2010,
-    tauxConversion: 5.45,
-    statut: 'Inactif',
-    couleur: '#00a651',
-    commissionType: 'Revenue Share',
-    commissionRate: 12,
-    promoCode: 'AFS-CSS12',
-    description: 'Assurance maladie et complémentaires santé.',
-  },
-];
+// (No mock data — all partner data comes from the API)
+
+// ── Color derivation from partner name ───────────────────────────────
+/** Generates a deterministic hex color from a string (partner name). */
+function deriveColor(name: string): string {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) {
+    hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  // Ensure reasonably saturated, not-too-light colors
+  const h = ((hash % 360) + 360) % 360;
+  const s = 55 + (Math.abs(hash >> 8) % 30); // 55-85%
+  const l = 30 + (Math.abs(hash >> 16) % 20); // 30-50%
+  return `hsl(${h}, ${s}%, ${l}%)`;
+}
+
+// ── Map API partner to frontend Partner ──────────────────────────────
+function mapApiPartner(api: ApiPartner): Partner {
+  return {
+    id: api.id,
+    nom: api.name,
+    categorie: api.service?.title ?? 'Autre',
+    siteWeb: api.websiteUrl ?? '',
+    clics: api.stats?.totalClicks ?? 0,
+    conversions: api.stats?.conversions ?? 0,
+    revenue: api.stats?.totalRevenue ?? 0,
+    tauxConversion: api.stats?.conversionRate ?? 0,
+    statut: api.active ? 'Actif' : 'Inactif',
+    couleur: deriveColor(api.name),
+    // Commission info is in the PartnerCommission relation; the list
+    // endpoint does not include it, so we show counts or defaults.
+    commissionType: api._count?.commissions > 0 ? `${api._count.commissions} rule(s)` : '-',
+    commissionRate: 0,
+    promoCode: api.promoCode ?? '',
+    description: api.description ?? '',
+  };
+}
 
 // ── Initials helper ───────────────────────────────────────────────────
 function getInitials(name: string) {
@@ -170,24 +147,18 @@ function getInitials(name: string) {
 
 // ── Category badge color ──────────────────────────────────────────────
 function categoryColor(cat: string) {
-  switch (cat) {
-    case 'Banque':
-      return 'bg-blue-100 text-blue-800';
-    case 'Assurance':
-      return 'bg-amber-100 text-amber-800';
-    case 'Investissement':
-      return 'bg-purple-100 text-purple-800';
-    case 'Crédit':
-      return 'bg-emerald-100 text-emerald-800';
-    default:
-      return 'bg-gray-100 text-gray-800';
-  }
+  const lower = cat.toLowerCase();
+  if (lower.includes('banque') || lower.includes('bank')) return 'bg-blue-100 text-blue-800';
+  if (lower.includes('assurance') || lower.includes('insurance')) return 'bg-amber-100 text-amber-800';
+  if (lower.includes('investissement') || lower.includes('invest')) return 'bg-purple-100 text-purple-800';
+  if (lower.includes('credit') || lower.includes('kredit')) return 'bg-emerald-100 text-emerald-800';
+  return 'bg-gray-100 text-gray-800';
 }
 
 // ── Main page component ───────────────────────────────────────────────
 
 export default function PartnersPage() {
-  const [partners, setPartners] = useState<Partner[]>(mockPartners);
+  const [partners, setPartners] = useState<Partner[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
 
@@ -199,23 +170,44 @@ export default function PartnersPage() {
   const [formCommissionRate, setFormCommissionRate] = useState('');
   const [formPromoCode, setFormPromoCode] = useState('');
   const [formDescription, setFormDescription] = useState('');
+  const [formServiceId, setFormServiceId] = useState('');
   const [submitting, setSubmitting] = useState(false);
+
+  // Available services fetched from backend (for the create form)
+  const [services, setServices] = useState<{ id: string; title: string; slug: string }[]>([]);
 
   useEffect(() => {
     async function fetchPartners() {
       try {
-        const res = await get<{ data: Partner[] }>('/admin/partners');
-        if (res?.data) {
-          setPartners(res.data);
+        // Backend returns a flat array: ApiPartner[]
+        const apiPartners = await get<ApiPartner[]>('/admin/partners');
+        if (Array.isArray(apiPartners)) {
+          setPartners(apiPartners.map(mapApiPartner));
         }
       } catch {
-        // Keep mock data
+        // Keep empty state on error
       } finally {
         setLoading(false);
       }
     }
 
     fetchPartners();
+  }, []);
+
+  // Optionally fetch services for the create dialog (best-effort)
+  useEffect(() => {
+    async function fetchServices() {
+      try {
+        // Try common endpoint patterns for listing services
+        const res = await get<{ id: string; title: string; slug: string }[]>('/services');
+        if (Array.isArray(res)) {
+          setServices(res);
+        }
+      } catch {
+        // Services list not available; the form will use a text input fallback
+      }
+    }
+    fetchServices();
   }, []);
 
   // Stats
@@ -228,16 +220,35 @@ export default function PartnersPage() {
       : 0;
 
   async function handleAddPartner() {
-    if (!formName || !formCategory || !formCommissionType || !formCommissionRate) return;
+    if (!formName || !formDescription) return;
 
     setSubmitting(true);
-    const newPartner: Partner = {
+
+    // Build the payload using backend field names (CreatePartnerDto)
+    const backendPayload: {
+      serviceId: string;
+      name: string;
+      description: string;
+      websiteUrl?: string;
+      promoCode?: string;
+      active: boolean;
+    } = {
+      serviceId: formServiceId || (services.length > 0 ? services[0].id : ''),
+      name: formName,
+      description: formDescription,
+      websiteUrl: formWebsite || undefined,
+      promoCode: formPromoCode || undefined,
+      active: true,
+    };
+
+    // Optimistic local partner for immediate UI update
+    const localPartner: Partner = {
       id: String(Date.now()),
       nom: formName,
       siteWeb: formWebsite,
-      categorie: formCategory,
-      commissionType: formCommissionType,
-      commissionRate: parseFloat(formCommissionRate),
+      categorie: formCategory || 'Autre',
+      commissionType: formCommissionType || '-',
+      commissionRate: parseFloat(formCommissionRate) || 0,
       promoCode: formPromoCode,
       description: formDescription,
       clics: 0,
@@ -245,16 +256,28 @@ export default function PartnersPage() {
       revenue: 0,
       tauxConversion: 0,
       statut: 'Actif',
-      couleur: '#' + Math.floor(Math.random() * 16777215).toString(16).padStart(6, '0'),
+      couleur: deriveColor(formName),
     };
 
     try {
-      await post('/admin/partners', newPartner);
+      const created = await post<ApiPartner>('/admin/partners', backendPayload);
+      // If the API returns the created partner, map it properly
+      if (created && created.id) {
+        const mapped = mapApiPartner(created);
+        // Override categorie with form value if the API partner lacks service info
+        if (!created.service) {
+          mapped.categorie = formCategory || 'Autre';
+        }
+        setPartners((prev) => [...prev, mapped]);
+      } else {
+        // API returned something unexpected; use local partner
+        setPartners((prev) => [...prev, localPartner]);
+      }
     } catch {
       // Add locally on API error
+      setPartners((prev) => [...prev, localPartner]);
     }
 
-    setPartners((prev) => [...prev, newPartner]);
     setDialogOpen(false);
     resetForm();
     setSubmitting(false);
@@ -268,6 +291,7 @@ export default function PartnersPage() {
     setFormCommissionRate('');
     setFormPromoCode('');
     setFormDescription('');
+    setFormServiceId('');
   }
 
   const stats = [
@@ -308,7 +332,7 @@ export default function PartnersPage() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Gestion des Partenaires</h1>
           <p className="text-muted-foreground mt-1">
-            Gérez vos partenaires et suivez leurs performances
+            Gerez vos partenaires et suivez leurs performances
           </p>
         </div>
 
@@ -342,9 +366,35 @@ export default function PartnersPage() {
                   onChange={(e) => setFormWebsite(e.target.value)}
                 />
               </div>
+
+              {/* Service selection — required by backend */}
+              <div className="grid gap-2">
+                <Label>Service</Label>
+                {services.length > 0 ? (
+                  <Select value={formServiceId} onValueChange={setFormServiceId}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Choisir un service..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {services.map((svc) => (
+                        <SelectItem key={svc.id} value={svc.id}>
+                          {svc.title}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <Input
+                    placeholder="ID du service"
+                    value={formServiceId}
+                    onChange={(e) => setFormServiceId(e.target.value)}
+                  />
+                )}
+              </div>
+
               <div className="grid grid-cols-2 gap-4">
                 <div className="grid gap-2">
-                  <Label>Catégorie</Label>
+                  <Label>Categorie</Label>
                   <Select value={formCategory} onValueChange={setFormCategory}>
                     <SelectTrigger className="w-full">
                       <SelectValue placeholder="Choisir..." />
@@ -353,7 +403,7 @@ export default function PartnersPage() {
                       <SelectItem value="Banque">Banque</SelectItem>
                       <SelectItem value="Assurance">Assurance</SelectItem>
                       <SelectItem value="Investissement">Investissement</SelectItem>
-                      <SelectItem value="Crédit">Crédit</SelectItem>
+                      <SelectItem value="Credit">Credit</SelectItem>
                       <SelectItem value="Autre">Autre</SelectItem>
                     </SelectContent>
                   </Select>
@@ -495,7 +545,7 @@ export default function PartnersPage() {
                 <Link href={`/partners/${partner.id}`}>
                   <Button variant="outline" className="w-full">
                     <Eye className="mr-2 h-4 w-4" />
-                    Voir détails
+                    Voir details
                   </Button>
                 </Link>
               </div>
