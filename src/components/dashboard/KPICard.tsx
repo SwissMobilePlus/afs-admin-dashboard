@@ -8,8 +8,9 @@ interface KPICardProps {
   title: string;
   value: number;
   icon: LucideIcon;
-  change: number;
-  changeLabel: string;
+  /** Optional percentage change vs previous period. When null/undefined, shows "—" instead of fake data. */
+  change?: number | null;
+  changeLabel?: string;
   prefix?: string;
 }
 
@@ -21,7 +22,8 @@ export function KPICard({
   changeLabel,
   prefix,
 }: KPICardProps) {
-  const isPositive = change >= 0;
+  const hasChange = change != null;
+  const isPositive = hasChange && change >= 0;
 
   const formattedValue = prefix
     ? `${prefix} ${value.toLocaleString('fr-CH')}`
@@ -37,22 +39,32 @@ export function KPICard({
           <span className="text-2xl font-bold tracking-tight text-card-foreground">
             {formattedValue}
           </span>
-          <div className="flex items-center gap-1.5 mt-0.5">
-            <span
-              className={cn(
-                'inline-flex items-center gap-0.5 text-xs font-medium rounded-full px-1.5 py-0.5',
-                isPositive
-                  ? 'text-emerald-700 bg-emerald-50 dark:text-emerald-400 dark:bg-emerald-950/50'
-                  : 'text-red-700 bg-red-50 dark:text-red-400 dark:bg-red-950/50'
+          {hasChange ? (
+            <div className="flex items-center gap-1.5 mt-0.5">
+              <span
+                className={cn(
+                  'inline-flex items-center gap-0.5 text-xs font-medium rounded-full px-1.5 py-0.5',
+                  isPositive
+                    ? 'text-emerald-700 bg-emerald-50 dark:text-emerald-400 dark:bg-emerald-950/50'
+                    : 'text-red-700 bg-red-50 dark:text-red-400 dark:bg-red-950/50'
+                )}
+              >
+                <span className="text-[10px]">{isPositive ? '\u2191' : '\u2193'}</span>
+                {Math.abs(change).toFixed(1)}%
+              </span>
+              {changeLabel && (
+                <span className="text-xs text-muted-foreground">
+                  {changeLabel}
+                </span>
               )}
-            >
-              <span className="text-[10px]">{isPositive ? '\u2191' : '\u2193'}</span>
-              {Math.abs(change).toFixed(1)}%
-            </span>
-            <span className="text-xs text-muted-foreground">
-              {changeLabel}
-            </span>
-          </div>
+            </div>
+          ) : (
+            <div className="flex items-center gap-1.5 mt-0.5">
+              <span className="text-xs text-muted-foreground">
+                {changeLabel || '—'}
+              </span>
+            </div>
+          )}
         </div>
         <div className="flex-shrink-0 rounded-lg bg-muted/50 p-2.5 text-muted-foreground transition-colors group-hover:bg-primary/10 group-hover:text-primary">
           <Icon className="h-5 w-5" />

@@ -5,143 +5,94 @@ import { Users, UserCheck, CreditCard, LifeBuoy } from 'lucide-react';
 import { get } from '@/lib/api';
 import { KPICard } from '@/components/dashboard/KPICard';
 import { GrowthChart } from '@/components/dashboard/GrowthChart';
-import { RevenueChart } from '@/components/dashboard/RevenueChart';
 import { UsersByCantonChart } from '@/components/dashboard/UsersByCantonChart';
 import { RecentActivity } from '@/components/dashboard/RecentActivity';
 
 // ── Types ────────────────────────────────────────────────────────────────
 
-interface DashboardStats {
+/** Shape returned by GET /admin/dashboard */
+interface DashboardAPIResponse {
+  usersTotal: number;
+  usersActive7d: number;
+  usersActive30d: number;
+  newUsersToday: number;
+  newUsersWeek: number;
+  newUsersMonth: number;
+  subscriptionsActive: number;
+  mrr: number;
+  jobsTotal: number;
+  jobsToday: number;
+  applicationsTotal: number;
+  supportOpen: number;
+  registrationsByDay: { date: string; count: number }[];
+  usersByCountry: { country: string; count: number }[];
+  usersByCanton: { canton: string; count: number }[];
+}
+
+/** Shape returned by GET /admin/users */
+interface UsersAPIResponse {
+  users: {
+    id: string;
+    email: string;
+    name: string | null;
+    firstName: string | null;
+    phone: string | null;
+    role: string;
+    targetCountry: string;
+    cantons: string[];
+    onboardingComplete: boolean;
+    bannedAt: string | null;
+    banReason: string | null;
+    lastActiveAt: string | null;
+    createdAt: string;
+    subscription: {
+      plan: string;
+      status: string;
+      store: string;
+      currentPeriodEnd: string | null;
+    } | null;
+  }[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+}
+
+/** Shape returned by GET /support/admin/conversations */
+interface ConversationsAPIResponse {
+  conversations: {
+    id: string;
+    userId: string;
+    userName: string;
+    userEmail: string;
+    subject: string;
+    status: string;
+    priority: string;
+    assignedTo: string | null;
+    lastMessage: string;
+    lastMessageAt: string;
+    unreadCount: number;
+    createdAt: string;
+    updatedAt: string;
+  }[];
+  total: number;
+  page: number;
+  pages: number;
+}
+
+/** Internal frontend state for the dashboard */
+interface DashboardState {
   usersTotal: number;
   usersActive30d: number;
   mrr: number;
   supportTicketsOpen: number;
   registrationsTrend: { date: string; count: number }[];
-  revenueBySource: { month: string; subscriptions: number; commissions: number }[];
   usersByCanton: { canton: string; count: number }[];
   recentUsers: { id: string; name: string; email: string; createdAt: string }[];
   recentTickets: { id: string; subject: string; status: string; createdAt: string }[];
-  changes: {
-    usersTotal: number;
-    usersActive30d: number;
-    mrr: number;
-    supportTicketsOpen: number;
-  };
 }
-
-// ── Mock data (fallback when API is unavailable) ─────────────────────────
-
-function generateRegistrationsTrend(): { date: string; count: number }[] {
-  const data: { date: string; count: number }[] = [];
-  const today = new Date();
-  for (let i = 29; i >= 0; i--) {
-    const date = new Date(today);
-    date.setDate(date.getDate() - i);
-    const base = 25 + Math.floor(Math.random() * 20);
-    const weekend = date.getDay() === 0 || date.getDay() === 6 ? -8 : 0;
-    data.push({
-      date: date.toISOString().split('T')[0],
-      count: Math.max(5, base + weekend + Math.floor(Math.random() * 10 - 5)),
-    });
-  }
-  return data;
-}
-
-const MOCK_STATS: DashboardStats = {
-  usersTotal: 1247,
-  usersActive30d: 834,
-  mrr: 4560,
-  supportTicketsOpen: 12,
-  registrationsTrend: generateRegistrationsTrend(),
-  revenueBySource: [
-    { month: 'Sept', subscriptions: 2800, commissions: 1200 },
-    { month: 'Oct', subscriptions: 3100, commissions: 1400 },
-    { month: 'Nov', subscriptions: 3400, commissions: 1350 },
-    { month: 'Dec', subscriptions: 3200, commissions: 1600 },
-    { month: 'Jan', subscriptions: 3800, commissions: 1800 },
-    { month: 'Feb', subscriptions: 4200, commissions: 2100 },
-  ],
-  usersByCanton: [
-    { canton: 'Gen\u00e8ve', count: 312 },
-    { canton: 'Vaud', count: 278 },
-    { canton: 'Neuch\u00e2tel', count: 156 },
-    { canton: 'Fribourg', count: 134 },
-    { canton: 'Valais', count: 112 },
-    { canton: 'Jura', count: 89 },
-    { canton: 'Berne', count: 98 },
-    { canton: 'Autres', count: 68 },
-  ],
-  recentUsers: [
-    {
-      id: '1',
-      name: 'Marie Dupont',
-      email: 'marie.dupont@example.ch',
-      createdAt: new Date(Date.now() - 1000 * 60 * 15).toISOString(),
-    },
-    {
-      id: '2',
-      name: 'Jean-Pierre Muller',
-      email: 'jp.muller@example.ch',
-      createdAt: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString(),
-    },
-    {
-      id: '3',
-      name: 'Sophie Berger',
-      email: 'sophie.berger@example.ch',
-      createdAt: new Date(Date.now() - 1000 * 60 * 60 * 5).toISOString(),
-    },
-    {
-      id: '4',
-      name: 'Luca Rossi',
-      email: 'luca.rossi@example.ch',
-      createdAt: new Date(Date.now() - 1000 * 60 * 60 * 12).toISOString(),
-    },
-    {
-      id: '5',
-      name: 'Anna Schneider',
-      email: 'anna.schneider@example.ch',
-      createdAt: new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString(),
-    },
-  ],
-  recentTickets: [
-    {
-      id: 't1',
-      subject: 'Probl\u00e8me de connexion au compte',
-      status: 'open',
-      createdAt: new Date(Date.now() - 1000 * 60 * 30).toISOString(),
-    },
-    {
-      id: 't2',
-      subject: 'Demande de remboursement abonnement',
-      status: 'in_progress',
-      createdAt: new Date(Date.now() - 1000 * 60 * 60 * 3).toISOString(),
-    },
-    {
-      id: 't3',
-      subject: 'Bug affichage profil mobile',
-      status: 'open',
-      createdAt: new Date(Date.now() - 1000 * 60 * 60 * 8).toISOString(),
-    },
-    {
-      id: 't4',
-      subject: 'Question facturation TVA',
-      status: 'resolved',
-      createdAt: new Date(Date.now() - 1000 * 60 * 60 * 18).toISOString(),
-    },
-    {
-      id: 't5',
-      subject: 'Mise \u00e0 jour donn\u00e9es personnelles',
-      status: 'resolved',
-      createdAt: new Date(Date.now() - 1000 * 60 * 60 * 36).toISOString(),
-    },
-  ],
-  changes: {
-    usersTotal: 12.5,
-    usersActive30d: 8.3,
-    mrr: 15.2,
-    supportTicketsOpen: -25.0,
-  },
-};
 
 // ── Skeleton components ──────────────────────────────────────────────────
 
@@ -192,47 +143,60 @@ function ActivitySkeleton() {
 // ── Dashboard Page ───────────────────────────────────────────────────────
 
 export default function DashboardPage() {
-  const [stats, setStats] = useState<DashboardStats>(MOCK_STATS);
+  const [data, setData] = useState<DashboardState | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
 
     async function fetchDashboard() {
-      const [result] = await Promise.allSettled([
-        get<Record<string, unknown>>('/admin/dashboard'),
+      // Fire all three requests in parallel
+      const [dashboardResult, usersResult, ticketsResult] = await Promise.allSettled([
+        get<DashboardAPIResponse>('/admin/dashboard'),
+        get<UsersAPIResponse>('/admin/users', { params: { page: 1, limit: 5 } }),
+        get<ConversationsAPIResponse>('/support/admin/conversations', { params: { page: 1, limit: 5 } }),
       ]);
 
-      if (!cancelled) {
-        if (result.status === 'fulfilled' && result.value) {
-          const api = result.value;
-          // Map API response shape to frontend DashboardStats interface
-          // The API returns different field names, so we normalize here
-          setStats((prev) => ({
-            ...prev, // keep mock defaults for any missing fields
-            usersTotal: (api.usersTotal as number) ?? prev.usersTotal,
-            usersActive30d: (api.usersActive30d as number) ?? prev.usersActive30d,
-            mrr: typeof api.mrr === 'number' ? Math.round(api.mrr) : prev.mrr,
-            supportTicketsOpen: (api.supportOpen as number) ?? prev.supportTicketsOpen,
-            registrationsTrend: Array.isArray(api.registrationsByDay)
-              ? (api.registrationsByDay as { date: string; count: number }[])
-              : prev.registrationsTrend,
-            usersByCanton: Array.isArray(api.usersByCanton)
-              ? (api.usersByCanton as { canton: string; count: number }[])
-              : prev.usersByCanton,
-            // revenueBySource and recentUsers/recentTickets are not returned by the API
-            // so we keep mock defaults — these can be connected later when endpoints exist
-            changes: {
-              usersTotal: prev.changes.usersTotal,
-              usersActive30d: prev.changes.usersActive30d,
-              mrr: prev.changes.mrr,
-              supportTicketsOpen: prev.changes.supportTicketsOpen,
-            },
-          }));
-        }
-        // If rejected, keep MOCK_STATS already in state
-        setIsLoading(false);
+      if (cancelled) return;
+
+      // --- Dashboard stats ---
+      const dashboard =
+        dashboardResult.status === 'fulfilled' ? dashboardResult.value : null;
+
+      // --- Recent users ---
+      let recentUsers: DashboardState['recentUsers'] = [];
+      if (usersResult.status === 'fulfilled' && usersResult.value?.users) {
+        recentUsers = usersResult.value.users.map((u) => ({
+          id: u.id,
+          name: [u.firstName, u.name].filter(Boolean).join(' ') || u.email,
+          email: u.email,
+          createdAt: u.createdAt,
+        }));
       }
+
+      // --- Recent tickets (conversations) ---
+      let recentTickets: DashboardState['recentTickets'] = [];
+      if (ticketsResult.status === 'fulfilled' && ticketsResult.value?.conversations) {
+        recentTickets = ticketsResult.value.conversations.map((c) => ({
+          id: c.id,
+          subject: c.subject,
+          status: c.status,
+          createdAt: c.createdAt,
+        }));
+      }
+
+      setData({
+        usersTotal: dashboard?.usersTotal ?? 0,
+        usersActive30d: dashboard?.usersActive30d ?? 0,
+        mrr: dashboard ? Math.round(dashboard.mrr) : 0,
+        supportTicketsOpen: dashboard?.supportOpen ?? 0,
+        registrationsTrend: dashboard?.registrationsByDay ?? [],
+        usersByCanton: dashboard?.usersByCanton ?? [],
+        recentUsers,
+        recentTickets,
+      });
+
+      setIsLoading(false);
     }
 
     fetchDashboard();
@@ -243,7 +207,7 @@ export default function DashboardPage() {
   }, []);
 
   // Loading state
-  if (isLoading) {
+  if (isLoading || !data) {
     return (
       <div className="flex flex-col gap-6">
         {/* KPI Skeletons */}
@@ -260,9 +224,6 @@ export default function DashboardPage() {
           <ChartSkeleton />
         </div>
 
-        {/* Revenue Chart Skeleton */}
-        <ChartSkeleton />
-
         {/* Activity Skeletons */}
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           <ActivitySkeleton />
@@ -271,8 +232,6 @@ export default function DashboardPage() {
       </div>
     );
   }
-
-  const data = stats;
 
   return (
     <div className="flex flex-col gap-6">
@@ -286,36 +245,28 @@ export default function DashboardPage() {
         </p>
       </div>
 
-      {/* KPI Cards */}
+      {/* KPI Cards — no fake change percentages; backend does not compute period-over-period deltas */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <KPICard
           title="Utilisateurs Total"
           value={data.usersTotal}
           icon={Users}
-          change={data.changes.usersTotal}
-          changeLabel="vs mois dernier"
         />
         <KPICard
           title="Utilisateurs Actifs (30j)"
           value={data.usersActive30d}
           icon={UserCheck}
-          change={data.changes.usersActive30d}
-          changeLabel="vs mois dernier"
         />
         <KPICard
           title="MRR"
           value={data.mrr}
           icon={CreditCard}
-          change={data.changes.mrr}
-          changeLabel="vs mois dernier"
           prefix="CHF"
         />
         <KPICard
           title="Tickets Support Ouverts"
           value={data.supportTicketsOpen}
           icon={LifeBuoy}
-          change={data.changes.supportTicketsOpen}
-          changeLabel="vs mois dernier"
         />
       </div>
 
@@ -329,10 +280,9 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Revenue Chart - Full Width */}
-      <RevenueChart data={data.revenueBySource} />
+      {/* Revenue chart removed — dedicated Revenue page handles revenue analytics */}
 
-      {/* Recent Activity */}
+      {/* Recent Activity — real data from /admin/users and /support/admin/conversations */}
       <RecentActivity
         recentUsers={data.recentUsers}
         recentTickets={data.recentTickets}
