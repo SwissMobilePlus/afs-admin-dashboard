@@ -430,8 +430,8 @@ function formatScore(score: number): string {
 export default function UsersPage() {
   const router = useRouter();
 
-  // State
-  const [users, setUsers] = useState<User[]>([]);
+  // State — initialize with mock data for crash-safe fallback
+  const [users, setUsers] = useState<User[]>(MOCK_USERS.slice(0, ITEMS_PER_PAGE));
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
   const [page, setPage] = useState(1);
@@ -470,25 +470,27 @@ export default function UsersPage() {
 
     async function fetchUsers() {
       setLoading(true);
-      try {
-        const params = new URLSearchParams({
-          page: String(page),
-          limit: String(ITEMS_PER_PAGE),
-        });
-        if (debouncedSearch) params.set('search', debouncedSearch);
-        if (roleFilter !== 'all') params.set('role', roleFilter);
-        if (cantonFilter !== 'all') params.set('canton', cantonFilter);
-        if (planFilter !== 'all') params.set('plan', planFilter);
 
-        const data = await get<UsersResponse>(`/admin/users?${params.toString()}`);
-        if (!cancelled) {
-          setUsers(data.users);
-          setTotal(data.total);
-          setTotalPages(data.totalPages);
-        }
-      } catch {
-        // Fallback to mock data
-        if (!cancelled) {
+      const params = new URLSearchParams({
+        page: String(page),
+        limit: String(ITEMS_PER_PAGE),
+      });
+      if (debouncedSearch) params.set('search', debouncedSearch);
+      if (roleFilter !== 'all') params.set('role', roleFilter);
+      if (cantonFilter !== 'all') params.set('canton', cantonFilter);
+      if (planFilter !== 'all') params.set('plan', planFilter);
+
+      const [result] = await Promise.allSettled([
+        get<UsersResponse>(`/admin/users?${params.toString()}`),
+      ]);
+
+      if (!cancelled) {
+        if (result.status === 'fulfilled' && result.value?.users) {
+          setUsers(result.value.users);
+          setTotal(result.value.total);
+          setTotalPages(result.value.totalPages);
+        } else {
+          // Fallback to mock data
           let filtered = [...MOCK_USERS];
 
           if (debouncedSearch) {
@@ -517,8 +519,7 @@ export default function UsersPage() {
           setTotal(filtered.length);
           setTotalPages(Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE)));
         }
-      } finally {
-        if (!cancelled) setLoading(false);
+        setLoading(false);
       }
     }
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { format, subDays } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import {
@@ -10,7 +10,6 @@ import {
   TrendingUp,
   MapPin,
   FileText,
-  Users,
   Clock,
   CheckCircle2,
   AlertCircle,
@@ -35,20 +34,21 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { get, post } from '@/lib/api';
 
-// ── Mock data ────────────────────────────────────────────────────────────
+// ── Types ────────────────────────────────────────────────────────────────
 
-// Generate 30 days of import data
-const importData = Array.from({ length: 30 }, (_, i) => {
-  const date = subDays(new Date('2026-02-23'), 29 - i);
-  const base = 80 + Math.floor(Math.random() * 80);
-  const weekend = date.getDay() === 0 || date.getDay() === 6;
-  return {
-    date: format(date, 'dd/MM'),
-    fullDate: format(date, 'dd MMM yyyy', { locale: fr }),
-    count: weekend ? Math.floor(base * 0.3) : base,
-  };
-});
+interface JobsStats {
+  totalActive: number;
+  importedToday: number;
+  totalApplications: number;
+  coveredCantons: number;
+}
+
+interface ImportHistoryEntry {
+  date: string;
+  count: number;
+}
 
 interface CantonCoverage {
   canton: string;
@@ -57,7 +57,22 @@ interface CantonCoverage {
   status: 'active' | 'warning' | 'inactive';
 }
 
-const cantonCoverage: CantonCoverage[] = [
+// ── Mock data (fallback when API is unavailable) ─────────────────────────
+
+const MOCK_IMPORT_HISTORY: ImportHistoryEntry[] = Array.from(
+  { length: 30 },
+  (_, i) => {
+    const date = subDays(new Date('2026-02-23'), 29 - i);
+    const base = 80 + Math.floor(Math.random() * 80);
+    const weekend = date.getDay() === 0 || date.getDay() === 6;
+    return {
+      date: date.toISOString().slice(0, 10),
+      count: weekend ? Math.floor(base * 0.3) : base,
+    };
+  },
+);
+
+const MOCK_CANTON_COVERAGE: CantonCoverage[] = [
   { canton: 'Zurich', offers: 520, lastImport: '2026-02-23T08:30:00', status: 'active' },
   { canton: 'Geneve', offers: 410, lastImport: '2026-02-23T08:30:00', status: 'active' },
   { canton: 'Vaud', offers: 355, lastImport: '2026-02-23T08:30:00', status: 'active' },
@@ -72,22 +87,34 @@ const cantonCoverage: CantonCoverage[] = [
   { canton: 'Soleure', offers: 54, lastImport: '2026-02-21T12:00:00', status: 'inactive' },
 ];
 
-const totalOffers = cantonCoverage.reduce((sum, c) => sum + c.offers, 0);
-const importedToday = 127;
-const totalApplications = 8420;
-const coveredCantons = cantonCoverage.filter((c) => c.status !== 'inactive').length;
+const MOCK_STATS: JobsStats = {
+  totalActive: MOCK_CANTON_COVERAGE.reduce((sum, c) => sum + c.offers, 0),
+  importedToday: 127,
+  totalApplications: 8420,
+  coveredCantons: MOCK_CANTON_COVERAGE.filter((c) => c.status !== 'inactive').length,
+};
 
-const kpis = [
-  { title: 'Total offres actives', value: totalOffers.toLocaleString('fr-CH'), icon: Briefcase, change: 5.2, changeLabel: 'vs semaine derniere' },
-  { title: 'Importees aujourd\'hui', value: importedToday.toString(), icon: Download, change: 12.3, changeLabel: 'vs hier' },
-  { title: 'Candidatures envoyees', value: totalApplications.toLocaleString('fr-CH'), icon: FileText, change: 8.1, changeLabel: 'vs mois dernier' },
-  { title: 'Cantons couverts', value: `${coveredCantons}/12`, icon: MapPin, change: 0, changeLabel: 'stable' },
-];
+// ── Status config for canton table ───────────────────────────────────────
 
-const statusConfigCanton: Record<string, { label: string; color: string; icon: React.ComponentType<{ className?: string }> }> = {
-  active: { label: 'Actif', color: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400', icon: CheckCircle2 },
-  warning: { label: 'Retard', color: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400', icon: Clock },
-  inactive: { label: 'Inactif', color: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400', icon: AlertCircle },
+const statusConfigCanton: Record<
+  string,
+  { label: string; color: string; icon: React.ComponentType<{ className?: string }> }
+> = {
+  active: {
+    label: 'Actif',
+    color: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400',
+    icon: CheckCircle2,
+  },
+  warning: {
+    label: 'Retard',
+    color: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400',
+    icon: Clock,
+  },
+  inactive: {
+    label: 'Inactif',
+    color: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400',
+    icon: AlertCircle,
+  },
 };
 
 // ── Chart tooltip ────────────────────────────────────────────────────────
@@ -114,15 +141,175 @@ function ChartTooltip({
   );
 }
 
+// ── Skeleton components ──────────────────────────────────────────────────
+
+function KPISkeleton() {
+  return (
+    <Card className="group relative overflow-hidden py-5">
+      <CardContent className="flex items-start justify-between gap-4">
+        <div className="flex flex-col gap-3 flex-1">
+          <div className="h-4 w-24 rounded-md bg-muted animate-pulse" />
+          <div className="h-7 w-32 rounded-md bg-muted animate-pulse" />
+          <div className="h-4 w-36 rounded-md bg-muted animate-pulse" />
+        </div>
+        <div className="h-10 w-10 rounded-lg bg-muted animate-pulse" />
+      </CardContent>
+    </Card>
+  );
+}
+
+function ChartSkeleton() {
+  return (
+    <Card className="py-5">
+      <CardHeader className="pb-2">
+        <div className="h-5 w-64 rounded-md bg-muted animate-pulse" />
+      </CardHeader>
+      <CardContent>
+        <div className="h-[300px] w-full rounded-lg bg-muted/50 animate-pulse" />
+      </CardContent>
+    </Card>
+  );
+}
+
+function TableSkeleton() {
+  return (
+    <Card className="py-0">
+      <CardHeader className="py-4">
+        <div className="h-5 w-48 rounded-md bg-muted animate-pulse" />
+      </CardHeader>
+      <div className="px-4 pb-4 flex flex-col gap-3">
+        {[...Array(6)].map((_, i) => (
+          <div key={i} className="h-10 w-full rounded-md bg-muted/50 animate-pulse" />
+        ))}
+      </div>
+    </Card>
+  );
+}
+
 // ── Page Component ───────────────────────────────────────────────────────
 
 export default function JobsPage() {
   const [isImporting, setIsImporting] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const handleImport = () => {
+  const [stats, setStats] = useState<JobsStats>(MOCK_STATS);
+  const [importHistory, setImportHistory] = useState<ImportHistoryEntry[]>(MOCK_IMPORT_HISTORY);
+  const [cantonCoverage, setCantonCoverage] = useState<CantonCoverage[]>(MOCK_CANTON_COVERAGE);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function fetchData() {
+      const [statsResult, historyResult, coverageResult] = await Promise.allSettled([
+        get<JobsStats>('/admin/jobs/stats'),
+        get<ImportHistoryEntry[]>('/admin/jobs/import-history'),
+        get<CantonCoverage[]>('/admin/jobs/coverage'),
+      ]);
+
+      if (!cancelled) {
+        if (statsResult.status === 'fulfilled' && statsResult.value) {
+          setStats(statsResult.value);
+        }
+        if (historyResult.status === 'fulfilled' && historyResult.value) {
+          setImportHistory(historyResult.value);
+        }
+        if (coverageResult.status === 'fulfilled' && coverageResult.value) {
+          setCantonCoverage(coverageResult.value);
+        }
+        // If any request fails, the mock data already in state is kept
+        setIsLoading(false);
+      }
+    }
+
+    fetchData();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Prepare chart data from importHistory
+  const chartData = importHistory.map((entry) => {
+    const d = new Date(entry.date);
+    return {
+      date: format(d, 'dd/MM'),
+      fullDate: format(d, 'dd MMM yyyy', { locale: fr }),
+      count: entry.count,
+    };
+  });
+
+  // Build KPI cards from stats
+  const totalCantons = cantonCoverage.length || 12;
+  const kpis = [
+    {
+      title: 'Total offres actives',
+      value: stats.totalActive.toLocaleString('fr-CH'),
+      icon: Briefcase,
+      change: 5.2,
+      changeLabel: 'vs semaine derniere',
+    },
+    {
+      title: "Importees aujourd'hui",
+      value: stats.importedToday.toString(),
+      icon: Download,
+      change: 12.3,
+      changeLabel: 'vs hier',
+    },
+    {
+      title: 'Candidatures envoyees',
+      value: stats.totalApplications.toLocaleString('fr-CH'),
+      icon: FileText,
+      change: 8.1,
+      changeLabel: 'vs mois dernier',
+    },
+    {
+      title: 'Cantons couverts',
+      value: `${stats.coveredCantons}/${totalCantons}`,
+      icon: MapPin,
+      change: 0,
+      changeLabel: 'stable',
+    },
+  ];
+
+  const handleImport = async () => {
     setIsImporting(true);
-    setTimeout(() => setIsImporting(false), 3000);
+    try {
+      await post('/jobs/import');
+    } catch {
+      // Silently handle — the import is fire-and-forget on the backend too
+    } finally {
+      // Keep the spinner for a minimum of 2s for UX feedback
+      setTimeout(() => setIsImporting(false), 2000);
+    }
   };
+
+  // Loading state
+  if (isLoading) {
+    return (
+      <div className="flex flex-col gap-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight">Emplois &amp; Importation</h1>
+            <p className="text-sm text-muted-foreground mt-1">
+              Suivez les offres d&apos;emploi importees et la couverture par canton
+            </p>
+          </div>
+          <Button disabled>
+            <RefreshCw className="mr-2 h-4 w-4" />
+            Lancer importation
+          </Button>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <KPISkeleton />
+          <KPISkeleton />
+          <KPISkeleton />
+          <KPISkeleton />
+        </div>
+        <ChartSkeleton />
+        <TableSkeleton />
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-6">
@@ -156,7 +343,10 @@ export default function JobsPage() {
           const isPositive = kpi.change > 0;
           const isZero = kpi.change === 0;
           return (
-            <Card key={kpi.title} className="group relative overflow-hidden py-5 transition-all duration-200 hover:shadow-md hover:border-border/80">
+            <Card
+              key={kpi.title}
+              className="group relative overflow-hidden py-5 transition-all duration-200 hover:shadow-md hover:border-border/80"
+            >
               <CardContent className="flex items-start justify-between gap-4">
                 <div className="flex flex-col gap-1.5 min-w-0">
                   <span className="text-sm font-medium text-muted-foreground truncate">
@@ -174,7 +364,9 @@ export default function JobsPage() {
                             : 'text-red-700 bg-red-50 dark:text-red-400 dark:bg-red-950/50'
                         }`}
                       >
-                        <span className="text-[10px]">{isPositive ? '\u2191' : '\u2193'}</span>
+                        <span className="text-[10px]">
+                          {isPositive ? '\u2191' : '\u2193'}
+                        </span>
                         {Math.abs(kpi.change).toFixed(1)}%
                       </span>
                     )}
@@ -202,7 +394,7 @@ export default function JobsPage() {
           <div className="h-[300px] w-full">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart
-                data={importData}
+                data={chartData}
                 margin={{ top: 8, right: 8, left: -12, bottom: 0 }}
               >
                 <CartesianGrid
@@ -267,10 +459,14 @@ export default function JobsPage() {
                     {canton.offers.toLocaleString('fr-CH')}
                   </TableCell>
                   <TableCell className="text-muted-foreground">
-                    {format(new Date(canton.lastImport), 'dd MMM yyyy, HH:mm', { locale: fr })}
+                    {format(new Date(canton.lastImport), 'dd MMM yyyy, HH:mm', {
+                      locale: fr,
+                    })}
                   </TableCell>
                   <TableCell>
-                    <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium ${statusInfo.color}`}>
+                    <span
+                      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium ${statusInfo.color}`}
+                    >
                       <StatusIcon className="h-3 w-3" />
                       {statusInfo.label}
                     </span>

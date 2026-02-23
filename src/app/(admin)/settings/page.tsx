@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import {
@@ -57,6 +57,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { get, post, patch } from '@/lib/api';
 
 // ── Types ────────────────────────────────────────────────────────────────
 
@@ -87,9 +88,46 @@ interface AdminUser {
   avatar: string;
 }
 
-// ── Mock data ────────────────────────────────────────────────────────────
+// ── API response types ───────────────────────────────────────────────────
 
-const initialFlags: FeatureFlag[] = [
+interface ApiFlagResponse {
+  key: string;
+  label: string;
+  description: string;
+  enabled: boolean;
+  percentage: number;
+}
+
+interface ApiAuditResponse {
+  id: string;
+  createdAt: string;
+  admin: string;
+  action: string;
+  target: string;
+  details: string;
+}
+
+interface ApiAdminResponse {
+  id: string;
+  name: string;
+  email: string;
+  role: 'super_admin' | 'admin' | 'support';
+  lastLoginAt: string;
+}
+
+// ── Icon mapping for feature flags ───────────────────────────────────────
+
+const flagIconMap: Record<string, React.ComponentType<{ className?: string }>> = {
+  premium_features: Sparkles,
+  ai_assistant: Bot,
+  job_alerts: Bell,
+  partner_offers: Handshake,
+  swiss_ready_score: Award,
+};
+
+// ── Mock data (fallback) ─────────────────────────────────────────────────
+
+const MOCK_FLAGS: FeatureFlag[] = [
   {
     key: 'premium_features',
     label: 'Fonctionnalites Premium',
@@ -132,7 +170,7 @@ const initialFlags: FeatureFlag[] = [
   },
 ];
 
-const auditEntries: AuditEntry[] = [
+const MOCK_AUDIT: AuditEntry[] = [
   { id: '1', date: '2026-02-23T09:30:00', admin: 'Marc Dubois', action: 'settings.update', target: 'feature_flags.ai_assistant', details: 'Pourcentage modifie de 50% a 75%' },
   { id: '2', date: '2026-02-23T09:15:00', admin: 'Marc Dubois', action: 'user.update', target: 'sophie.martin@gmail.com', details: 'Mot de passe reinitialise' },
   { id: '3', date: '2026-02-22T18:45:00', admin: 'Marie Laurent', action: 'campaign.create', target: 'Nouvelles offres premium', details: 'Campagne push creee, audience: 3420' },
@@ -150,7 +188,7 @@ const auditEntries: AuditEntry[] = [
   { id: '15', date: '2026-02-18T14:00:00', admin: 'Marc Dubois', action: 'admin.invite', target: 'new.support@afs-app.ch', details: 'Invitation envoyee, role: support' },
 ];
 
-const adminUsers: AdminUser[] = [
+const MOCK_ADMINS: AdminUser[] = [
   {
     id: '1',
     name: 'Marc Dubois',
@@ -179,6 +217,14 @@ const adminUsers: AdminUser[] = [
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
+function generateAvatar(name: string): string {
+  return name
+    .split(' ')
+    .map((part) => part.charAt(0).toUpperCase())
+    .join('')
+    .slice(0, 2);
+}
+
 const actionLabels: Record<string, { label: string; color: string }> = {
   'settings.update': { label: 'Parametres', color: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400' },
   'user.update': { label: 'Utilisateur', color: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400' },
@@ -200,23 +246,166 @@ const roleLabels: Record<string, { label: string; color: string }> = {
 // ── Page Component ───────────────────────────────────────────────────────
 
 export default function SettingsPage() {
-  const [flags, setFlags] = useState<FeatureFlag[]>(initialFlags);
+  const [flags, setFlags] = useState<FeatureFlag[]>(MOCK_FLAGS);
+  const [auditEntries, setAuditEntries] = useState<AuditEntry[]>(MOCK_AUDIT);
+  const [adminUsers, setAdminUsers] = useState<AdminUser[]>(MOCK_ADMINS);
+  const [loading, setLoading] = useState(true);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteRole, setInviteRole] = useState<string>('support');
 
-  const toggleFlag = (key: string) => {
+  // ── Fetch all data on mount ────────────────────────────────────────────
+
+  useEffect(() => {
+    async function fetchAll() {
+      const [flagsResult, auditResult, adminsResult] = await Promise.allSettled([
+        get<ApiFlagResponse[]>('/admin/settings/feature-flags'),
+        get<{ data: ApiAuditResponse[] }>('/admin/audit-log'),
+        get<ApiAdminResponse[]>('/admin/settings/admins'),
+      ]);
+
+      if (flagsResult.status === 'fulfilled') {
+        const apiFlags = flagsResult.value;
+        setFlags(
+          apiFlags.map((f) => ({
+            key: f.key,
+            label: f.label,
+            description: f.description,
+            enabled: f.enabled,
+            percentage: f.percentage,
+            icon: flagIconMap[f.key] || Flag,
+          }))
+        );
+      }
+
+      if (auditResult.status === 'fulfilled') {
+        const apiAudit = auditResult.value;
+        const entries = Array.isArray(apiAudit) ? apiAudit : apiAudit.data;
+        setAuditEntries(
+          entries.map((e) => ({
+            id: e.id,
+            date: e.createdAt,
+            admin: e.admin,
+            action: e.action,
+            target: e.target,
+            details: e.details,
+          }))
+        );
+      }
+
+      if (adminsResult.status === 'fulfilled') {
+        const apiAdmins = adminsResult.value;
+        setAdminUsers(
+          apiAdmins.map((a) => ({
+            id: a.id,
+            name: a.name,
+            email: a.email,
+            role: a.role,
+            lastAccess: a.lastLoginAt,
+            avatar: generateAvatar(a.name),
+          }))
+        );
+      }
+
+      setLoading(false);
+    }
+
+    fetchAll();
+  }, []);
+
+  // ── Toggle feature flag via API ────────────────────────────────────────
+
+  const toggleFlag = async (key: string) => {
+    const flag = flags.find((f) => f.key === key);
+    if (!flag) return;
+
+    const newEnabled = !flag.enabled;
+    const newPercentage = newEnabled ? 100 : 0;
+
+    // Optimistic update
     setFlags((prev) =>
       prev.map((f) =>
-        f.key === key ? { ...f, enabled: !f.enabled, percentage: !f.enabled ? 100 : 0 } : f
+        f.key === key ? { ...f, enabled: newEnabled, percentage: newPercentage } : f
       )
     );
+
+    try {
+      await patch(`/admin/settings/feature-flags/${key}`, {
+        enabled: newEnabled,
+        percentage: newPercentage,
+      });
+    } catch (error) {
+      // Revert on failure
+      setFlags((prev) =>
+        prev.map((f) =>
+          f.key === key ? { ...f, enabled: flag.enabled, percentage: flag.percentage } : f
+        )
+      );
+      console.error('Failed to update feature flag:', error);
+    }
   };
 
-  const updatePercentage = (key: string, percentage: number) => {
+  // ── Update rollout percentage via API ──────────────────────────────────
+
+  const updatePercentage = async (key: string, percentage: number) => {
+    const flag = flags.find((f) => f.key === key);
+    if (!flag) return;
+
+    const previousPercentage = flag.percentage;
+
+    // Optimistic update
     setFlags((prev) =>
       prev.map((f) => (f.key === key ? { ...f, percentage } : f))
     );
+
+    try {
+      await patch(`/admin/settings/feature-flags/${key}`, {
+        enabled: flag.enabled,
+        percentage,
+      });
+    } catch (error) {
+      // Revert on failure
+      setFlags((prev) =>
+        prev.map((f) => (f.key === key ? { ...f, percentage: previousPercentage } : f))
+      );
+      console.error('Failed to update flag percentage:', error);
+    }
+  };
+
+  // ── Invite admin via API ───────────────────────────────────────────────
+
+  const handleInviteAdmin = async () => {
+    if (!inviteEmail) return;
+
+    try {
+      await post('/admin/settings/admins', {
+        email: inviteEmail,
+        role: inviteRole,
+      });
+
+      // Refresh admin list after successful invite
+      try {
+        const apiAdmins = await get<ApiAdminResponse[]>('/admin/settings/admins');
+        setAdminUsers(
+          apiAdmins.map((a) => ({
+            id: a.id,
+            name: a.name,
+            email: a.email,
+            role: a.role,
+            lastAccess: a.lastLoginAt,
+            avatar: generateAvatar(a.name),
+          }))
+        );
+      } catch {
+        // If refresh fails, keep current list — the invite still succeeded
+      }
+
+      setInviteOpen(false);
+      setInviteEmail('');
+      setInviteRole('support');
+    } catch (error) {
+      console.error('Failed to invite admin:', error);
+    }
   };
 
   return (
@@ -407,7 +596,7 @@ export default function SettingsPage() {
                     <Button variant="outline" onClick={() => setInviteOpen(false)}>
                       Annuler
                     </Button>
-                    <Button onClick={() => { setInviteOpen(false); setInviteEmail(''); }}>
+                    <Button onClick={handleInviteAdmin}>
                       <Mail className="mr-2 h-4 w-4" />
                       Envoyer l&apos;invitation
                     </Button>

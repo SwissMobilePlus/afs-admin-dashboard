@@ -192,27 +192,23 @@ function ActivitySkeleton() {
 // ── Dashboard Page ───────────────────────────────────────────────────────
 
 export default function DashboardPage() {
-  const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [stats, setStats] = useState<DashboardStats>(MOCK_STATS);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
 
     async function fetchDashboard() {
-      try {
-        const data = await get<DashboardStats>('/admin/dashboard');
-        if (!cancelled) {
-          setStats(data);
+      const [result] = await Promise.allSettled([
+        get<DashboardStats>('/admin/dashboard'),
+      ]);
+
+      if (!cancelled) {
+        if (result.status === 'fulfilled' && result.value) {
+          setStats(result.value);
         }
-      } catch {
-        // API unavailable or unauthorized - use mock data
-        if (!cancelled) {
-          setStats(MOCK_STATS);
-        }
-      } finally {
-        if (!cancelled) {
-          setIsLoading(false);
-        }
+        // If rejected, keep MOCK_STATS already in state
+        setIsLoading(false);
       }
     }
 
@@ -253,8 +249,7 @@ export default function DashboardPage() {
     );
   }
 
-  // Loaded state — stats is guaranteed non-null here
-  const data = stats!;
+  const data = stats;
 
   return (
     <div className="flex flex-col gap-6">

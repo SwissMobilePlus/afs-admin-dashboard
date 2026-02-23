@@ -1,5 +1,6 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -34,6 +35,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { get } from '@/lib/api';
 
 // ── Types ────────────────────────────────────────────────────────────────
 
@@ -51,9 +53,9 @@ interface Campaign {
   clicks: number;
 }
 
-// ── Mock data ────────────────────────────────────────────────────────────
+// ── Mock / fallback data ─────────────────────────────────────────────────
 
-const campaigns: Campaign[] = [
+const MOCK_CAMPAIGNS: Campaign[] = [
   {
     id: '1',
     title: 'Nouvelles offres premium disponibles',
@@ -151,30 +153,173 @@ const statusConfig: Record<CampaignStatus, { label: string; color: string }> = {
   annulee: { label: 'Annulée', color: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400' },
 };
 
-// ── Stats calculations ──────────────────────────────────────────────────
+// ── API response normalization ───────────────────────────────────────────
 
-const sentCampaigns = campaigns.filter((c) => c.status === 'envoyee');
-const totalSent = sentCampaigns.length;
-const avgOpenRate =
-  sentCampaigns.length > 0
-    ? sentCampaigns.reduce((acc, c) => acc + (c.audience > 0 ? (c.opens / c.audience) * 100 : 0), 0) / sentCampaigns.length
-    : 0;
-const avgClickRate =
-  sentCampaigns.length > 0
-    ? sentCampaigns.reduce((acc, c) => acc + (c.audience > 0 ? (c.clicks / c.audience) * 100 : 0), 0) / sentCampaigns.length
-    : 0;
-const totalReached = sentCampaigns.reduce((acc, c) => acc + c.audience, 0);
+/** Normalize API type field: 'in_app' -> 'in-app' */
+function normalizeType(type: string): CampaignType {
+  if (type === 'in_app') return 'in-app';
+  if (type === 'push' || type === 'email' || type === 'in-app') return type;
+  return 'email'; // safe fallback
+}
 
-const stats = [
-  { title: 'Campagnes envoyées', value: totalSent, icon: Send, change: 12.5, changeLabel: 'vs mois dernier' },
-  { title: 'Taux d\'ouverture moyen', value: `${avgOpenRate.toFixed(1)}%`, icon: Eye, change: 3.2, changeLabel: 'vs mois dernier' },
-  { title: 'Taux de clic moyen', value: `${avgClickRate.toFixed(1)}%`, icon: MousePointerClick, change: -1.8, changeLabel: 'vs mois dernier' },
-  { title: 'Utilisateurs atteints', value: totalReached.toLocaleString('fr-CH'), icon: Users, change: 8.7, changeLabel: 'vs mois dernier' },
-];
+/** Normalize API status field: English -> French equivalents */
+function normalizeStatus(status: string): CampaignStatus {
+  const statusMap: Record<string, CampaignStatus> = {
+    draft: 'brouillon',
+    scheduled: 'programmee',
+    sent: 'envoyee',
+    cancelled: 'annulee',
+    // Already-French values pass through
+    brouillon: 'brouillon',
+    programmee: 'programmee',
+    envoyee: 'envoyee',
+    annulee: 'annulee',
+  };
+  return statusMap[status] || 'brouillon';
+}
+
+/** Normalize a raw campaign object from the API into our local Campaign type */
+function normalizeCampaign(raw: Record<string, unknown>): Campaign {
+  return {
+    id: String(raw.id ?? ''),
+    title: String(raw.title ?? ''),
+    type: normalizeType(String(raw.type ?? 'email')),
+    date: String(raw.date ?? raw.created_at ?? raw.scheduled_at ?? ''),
+    audience: Number(raw.audience ?? 0),
+    status: normalizeStatus(String(raw.status ?? 'draft')),
+    opens: Number(raw.opens ?? 0),
+    clicks: Number(raw.clicks ?? 0),
+  };
+}
+
+// ── Skeleton components ──────────────────────────────────────────────────
+
+function KPISkeleton() {
+  return (
+    <Card className="group relative overflow-hidden py-5">
+      <CardContent className="flex items-start justify-between gap-4">
+        <div className="flex flex-col gap-1.5 min-w-0">
+          <div className="h-4 w-28 rounded-md bg-muted animate-pulse" />
+          <div className="h-7 w-16 rounded-md bg-muted animate-pulse mt-1" />
+          <div className="h-4 w-32 rounded-md bg-muted animate-pulse mt-1" />
+        </div>
+        <div className="flex-shrink-0 rounded-lg bg-muted/50 p-2.5">
+          <div className="h-5 w-5 rounded bg-muted animate-pulse" />
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function TableSkeleton() {
+  return (
+    <Card className="py-0">
+      <div className="p-4 space-y-3">
+        <div className="h-8 w-full rounded-md bg-muted animate-pulse" />
+        {Array.from({ length: 6 }).map((_, i) => (
+          <div key={i} className="h-12 w-full rounded-md bg-muted/60 animate-pulse" />
+        ))}
+      </div>
+    </Card>
+  );
+}
 
 // ── Page Component ───────────────────────────────────────────────────────
 
 export default function MarketingPage() {
+  const [campaigns, setCampaigns] = useState<Campaign[]>(MOCK_CAMPAIGNS);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function fetchData() {
+      try {
+        const [campaignsRes] = await Promise.allSettled([
+          get<{ campaigns: Campaign[] } | Campaign[]>('/admin/campaigns'),
+        ]);
+
+        if (campaignsRes.status === 'fulfilled' && campaignsRes.value) {
+          const raw: unknown = campaignsRes.value;
+          // Handle both { campaigns: [...] } and plain [...] response shapes
+          let rawList: Record<string, unknown>[] = [];
+          if (Array.isArray(raw)) {
+            rawList = raw as Record<string, unknown>[];
+          } else if (raw && typeof raw === 'object' && 'campaigns' in raw && Array.isArray((raw as Record<string, unknown>).campaigns)) {
+            rawList = (raw as Record<string, unknown>).campaigns as Record<string, unknown>[];
+          }
+
+          if (rawList.length > 0) {
+            setCampaigns(rawList.map(normalizeCampaign));
+          }
+          // If rawList is empty, keep MOCK_CAMPAIGNS as fallback
+        }
+      } catch {
+        // Keep mock data on error
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    fetchData();
+  }, []);
+
+  // ── Stats calculations (computed from current campaigns state) ────────
+
+  const sentCampaigns = campaigns.filter((c) => c.status === 'envoyee');
+  const totalSent = sentCampaigns.length;
+  const avgOpenRate =
+    sentCampaigns.length > 0
+      ? sentCampaigns.reduce((acc, c) => acc + (c.audience > 0 ? (c.opens / c.audience) * 100 : 0), 0) / sentCampaigns.length
+      : 0;
+  const avgClickRate =
+    sentCampaigns.length > 0
+      ? sentCampaigns.reduce((acc, c) => acc + (c.audience > 0 ? (c.clicks / c.audience) * 100 : 0), 0) / sentCampaigns.length
+      : 0;
+  const totalReached = sentCampaigns.reduce((acc, c) => acc + c.audience, 0);
+
+  const stats = [
+    { title: 'Campagnes envoyées', value: totalSent, icon: Send, change: 12.5, changeLabel: 'vs mois dernier' },
+    { title: 'Taux d\'ouverture moyen', value: `${avgOpenRate.toFixed(1)}%`, icon: Eye, change: 3.2, changeLabel: 'vs mois dernier' },
+    { title: 'Taux de clic moyen', value: `${avgClickRate.toFixed(1)}%`, icon: MousePointerClick, change: -1.8, changeLabel: 'vs mois dernier' },
+    { title: 'Utilisateurs atteints', value: totalReached.toLocaleString('fr-CH'), icon: Users, change: 8.7, changeLabel: 'vs mois dernier' },
+  ];
+
+  // ── Loading state ──────────────────────────────────────────────────────
+
+  if (loading) {
+    return (
+      <div className="flex flex-col gap-6">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight">Campagnes Marketing</h1>
+            <p className="text-sm text-muted-foreground mt-1">
+              Gérez vos campagnes push, email et in-app
+            </p>
+          </div>
+          <Button asChild>
+            <Link href="/marketing/new">
+              <Plus className="mr-2 h-4 w-4" />
+              Nouvelle campagne
+            </Link>
+          </Button>
+        </div>
+
+        {/* KPI Skeletons */}
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <KPISkeleton />
+          <KPISkeleton />
+          <KPISkeleton />
+          <KPISkeleton />
+        </div>
+
+        {/* Table Skeleton */}
+        <TableSkeleton />
+      </div>
+    );
+  }
+
+  // ── Loaded state ───────────────────────────────────────────────────────
+
   return (
     <div className="flex flex-col gap-6">
       {/* Header */}
