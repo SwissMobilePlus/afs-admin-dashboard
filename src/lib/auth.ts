@@ -1,6 +1,7 @@
 import { post } from './api';
 
 const TOKEN_KEY = 'afs_admin_token';
+const REFRESH_TOKEN_KEY = 'afs_admin_refresh_token';
 
 // ── Token helpers ─────────────────────────────────────────────────────
 
@@ -19,13 +20,25 @@ export function removeToken(): void {
   localStorage.removeItem(TOKEN_KEY);
 }
 
+function setRefreshToken(token: string): void {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem(REFRESH_TOKEN_KEY, token);
+}
+
+function removeRefreshToken(): void {
+  if (typeof window === 'undefined') return;
+  localStorage.removeItem(REFRESH_TOKEN_KEY);
+}
+
 // ── JWT payload types ─────────────────────────────────────────────────
 
 export interface AdminUser {
   id: string;
   email: string;
   name: string;
-  role: 'super_admin' | 'admin' | 'support' | 'partner';
+  firstName?: string;
+  role: 'super_admin' | 'admin' | 'support';
+  sub?: string;
   iat?: number;
   exp?: number;
 }
@@ -38,7 +51,12 @@ function decodeJwtPayload(token: string): AdminUser | null {
     if (parts.length !== 3) return null;
     const payload = parts[1];
     const decoded = atob(payload.replace(/-/g, '+').replace(/_/g, '/'));
-    return JSON.parse(decoded) as AdminUser;
+    const parsed = JSON.parse(decoded);
+    // Map JWT 'sub' field to 'id'
+    return {
+      ...parsed,
+      id: parsed.sub || parsed.id,
+    } as AdminUser;
   } catch {
     return null;
   }
@@ -66,6 +84,7 @@ export function isAuthenticated(): boolean {
     const now = Math.floor(Date.now() / 1000);
     if (user.exp < now) {
       removeToken();
+      removeRefreshToken();
       return false;
     }
   }
@@ -73,29 +92,47 @@ export function isAuthenticated(): boolean {
   return true;
 }
 
-// ── Login ─────────────────────────────────────────────────────────────
+// ── OTP Login ─────────────────────────────────────────────────────────
 
-interface LoginResponse {
-  token: string;
+interface RequestOtpResponse {
+  message: string;
+  expiresInSeconds: number;
+}
+
+interface VerifyOtpResponse {
+  accessToken: string;
+  refreshToken: string;
+  expiresIn: number;
   user: AdminUser;
 }
 
-export async function login(
-  email: string,
-  password: string
-): Promise<LoginResponse> {
-  const data = await post<LoginResponse>('/auth/admin/login', {
-    email,
-    password,
-  });
-  setToken(data.token);
-  return data;
+/**
+ * Step 1: Request OTP code for admin login
+ */
+export async function requestOtp(email: string): Promise<RequestOtpResponse> {
+  return post<RequestOtpResponse>('/auth/admin/request-otp', { email });
+}
+
+/**
+ * Step 2: Verify OTP code and get JWT tokens
+ */
+export async function verifyOtp(email: string, code: string): Promise<AdminUser> {
+  const data = await post<VerifyOtpResponse>('/auth/admin/verify-otp', { email, code });
+  setToken(data.accessToken);
+  setRefreshToken(data.refreshToken);
+  return data.user;
 }
 
 // ── Logout ────────────────────────────────────────────────────────────
 
-export function logout(): void {
+export async function logout(): Promise<void> {
+  try {
+    await post('/auth/logout', {});
+  } catch {
+    // Continue with local cleanup even if server call fails
+  }
   removeToken();
+  removeRefreshToken();
   if (typeof window !== 'undefined') {
     window.location.href = '/login';
   }

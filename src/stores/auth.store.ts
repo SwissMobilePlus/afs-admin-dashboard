@@ -2,7 +2,8 @@
 
 import { create } from 'zustand';
 import {
-  login as authLogin,
+  requestOtp as authRequestOtp,
+  verifyOtp as authVerifyOtp,
   logout as authLogout,
   getUser,
   isAuthenticated as checkAuth,
@@ -15,43 +16,90 @@ interface AuthState {
   isLoading: boolean;
   error: string | null;
 
+  // OTP flow state
+  otpStep: 'email' | 'code';
+  otpEmail: string | null;
+  otpExpiresInSeconds: number | null;
+
   // Actions
-  login: (email: string, password: string) => Promise<void>;
+  requestOtp: (email: string) => Promise<void>;
+  verifyOtp: (code: string) => Promise<void>;
+  resetOtpFlow: () => void;
   logout: () => void;
   initialize: () => void;
   clearError: () => void;
 }
 
-export const useAuthStore = create<AuthState>((set) => ({
+function extractErrorMessage(err: unknown): string {
+  if (err instanceof Error) {
+    // Axios wraps the response message
+    const axiosErr = err as any;
+    if (axiosErr.response?.data?.message) {
+      return axiosErr.response.data.message;
+    }
+    return err.message;
+  }
+  return 'Erreur de connexion';
+}
+
+export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
   isAuthenticated: false,
   isLoading: false,
   error: null,
+  otpStep: 'email',
+  otpEmail: null,
+  otpExpiresInSeconds: null,
 
-  login: async (email: string, password: string) => {
+  requestOtp: async (email: string) => {
     set({ isLoading: true, error: null });
     try {
-      const response = await authLogin(email, password);
+      const response = await authRequestOtp(email);
       set({
-        user: response.user,
-        isAuthenticated: true,
         isLoading: false,
+        otpStep: 'code',
+        otpEmail: email,
+        otpExpiresInSeconds: response.expiresInSeconds,
         error: null,
       });
     } catch (err: unknown) {
-      const message =
-        err instanceof Error
-          ? err.message
-          : (err as { response?: { data?: { message?: string } } })?.response
-              ?.data?.message || 'Erreur de connexion';
       set({
-        user: null,
-        isAuthenticated: false,
         isLoading: false,
-        error: message,
+        error: extractErrorMessage(err),
       });
-      throw err;
     }
+  },
+
+  verifyOtp: async (code: string) => {
+    const { otpEmail } = get();
+    if (!otpEmail) return;
+
+    set({ isLoading: true, error: null });
+    try {
+      const user = await authVerifyOtp(otpEmail, code);
+      set({
+        user,
+        isAuthenticated: true,
+        isLoading: false,
+        error: null,
+        otpStep: 'email',
+        otpEmail: null,
+      });
+    } catch (err: unknown) {
+      set({
+        isLoading: false,
+        error: extractErrorMessage(err),
+      });
+    }
+  },
+
+  resetOtpFlow: () => {
+    set({
+      otpStep: 'email',
+      otpEmail: null,
+      otpExpiresInSeconds: null,
+      error: null,
+    });
   },
 
   logout: () => {
@@ -60,6 +108,8 @@ export const useAuthStore = create<AuthState>((set) => ({
       user: null,
       isAuthenticated: false,
       error: null,
+      otpStep: 'email',
+      otpEmail: null,
     });
   },
 
