@@ -2,7 +2,7 @@ import axios, { AxiosRequestConfig, AxiosResponse } from 'axios';
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL ||
-  'https://afs-api-production.up.railway.app';
+  'https://afs-api-production.up.railway.app/api/v1';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
