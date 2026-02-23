@@ -42,7 +42,7 @@ export default function Sidebar() {
   const [collapsed, setCollapsed] = useState(false);
   const pathname = usePathname();
   const { user, logout } = useAuthStore();
-  const unreadCount = useSupportStore((s) => s.unreadCount);
+  const unreadCount = useSupportStore((s) => s.unreadCount ?? 0);
 
   const isActive = (href: string) => {
     if (href === '/dashboard') {

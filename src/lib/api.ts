@@ -4,6 +4,13 @@ const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL ||
   'https://afs-api-production.up.railway.app/api/v1';
 
+// Callback for auth invalidation (set by auth store to avoid circular deps)
+let onAuthInvalidated: (() => void) | null = null;
+
+export function setAuthInvalidatedCallback(callback: () => void) {
+  onAuthInvalidated = callback;
+}
+
 const api = axios.create({
   baseURL: API_BASE_URL,
   headers: {
@@ -26,17 +33,16 @@ api.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
-// Response interceptor: handle 401 by redirecting to login
+// Response interceptor: handle 401 by clearing tokens and notifying auth store
 api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
       if (typeof window !== 'undefined') {
         localStorage.removeItem('afs_admin_token');
-        // Avoid redirect loops if already on login page
-        if (!window.location.pathname.includes('/login')) {
-          window.location.href = '/login';
-        }
+        localStorage.removeItem('afs_admin_refresh_token');
+        // Notify auth store to update state — AdminLayout will handle redirect via React router
+        onAuthInvalidated?.();
       }
     }
     return Promise.reject(error);

@@ -9,6 +9,7 @@ import {
   isAuthenticated as checkAuth,
   AdminUser,
 } from '@/lib/auth';
+import { setAuthInvalidatedCallback } from '@/lib/api';
 
 interface AuthState {
   user: AdminUser | null;
@@ -26,6 +27,7 @@ interface AuthState {
   verifyOtp: (code: string) => Promise<void>;
   resetOtpFlow: () => void;
   logout: () => void;
+  clearAuth: () => void;
   initialize: () => void;
   clearError: () => void;
 }
@@ -113,6 +115,16 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     });
   },
 
+  clearAuth: () => {
+    set({
+      user: null,
+      isAuthenticated: false,
+      error: null,
+      otpStep: 'email',
+      otpEmail: null,
+    });
+  },
+
   initialize: () => {
     const authenticated = checkAuth();
     if (authenticated) {
@@ -125,3 +137,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   clearError: () => set({ error: null }),
 }));
+
+// Register the 401 callback so API interceptor can notify the store
+// This runs once when the module is loaded on the client
+if (typeof window !== 'undefined') {
+  setAuthInvalidatedCallback(() => {
+    useAuthStore.getState().clearAuth();
+  });
+}

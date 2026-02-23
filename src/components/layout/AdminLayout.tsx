@@ -16,7 +16,11 @@ export default function AdminLayout({
   const [isReady, setIsReady] = useState(false);
 
   useEffect(() => {
-    initialize();
+    try {
+      initialize();
+    } catch (e) {
+      console.error('[AdminLayout] Failed to initialize auth:', e);
+    }
     setIsReady(true);
   }, [initialize]);
 
