@@ -40,11 +40,11 @@ export default function LoginPage() {
       <div className="w-full max-w-sm">
         {/* Branding */}
         <div className="mb-8 text-center">
-          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary">
-            <span className="text-xl font-bold text-primary-foreground">
-              AFS
-            </span>
-          </div>
+          <img
+            src="/logo-afs.png"
+            alt="AFS - Aide Frontalier Suisse"
+            className="mx-auto mb-4 h-16 w-auto"
+          />
           <h1 className="text-2xl font-semibold text-foreground">
             AFS Admin
           </h1>
