@@ -200,12 +200,35 @@ export default function DashboardPage() {
 
     async function fetchDashboard() {
       const [result] = await Promise.allSettled([
-        get<DashboardStats>('/admin/dashboard'),
+        get<Record<string, unknown>>('/admin/dashboard'),
       ]);
 
       if (!cancelled) {
         if (result.status === 'fulfilled' && result.value) {
-          setStats(result.value);
+          const api = result.value;
+          // Map API response shape to frontend DashboardStats interface
+          // The API returns different field names, so we normalize here
+          setStats((prev) => ({
+            ...prev, // keep mock defaults for any missing fields
+            usersTotal: (api.usersTotal as number) ?? prev.usersTotal,
+            usersActive30d: (api.usersActive30d as number) ?? prev.usersActive30d,
+            mrr: typeof api.mrr === 'number' ? Math.round(api.mrr) : prev.mrr,
+            supportTicketsOpen: (api.supportOpen as number) ?? prev.supportTicketsOpen,
+            registrationsTrend: Array.isArray(api.registrationsByDay)
+              ? (api.registrationsByDay as { date: string; count: number }[])
+              : prev.registrationsTrend,
+            usersByCanton: Array.isArray(api.usersByCanton)
+              ? (api.usersByCanton as { canton: string; count: number }[])
+              : prev.usersByCanton,
+            // revenueBySource and recentUsers/recentTickets are not returned by the API
+            // so we keep mock defaults — these can be connected later when endpoints exist
+            changes: {
+              usersTotal: prev.changes.usersTotal,
+              usersActive30d: prev.changes.usersActive30d,
+              mrr: prev.changes.mrr,
+              supportTicketsOpen: prev.changes.supportTicketsOpen,
+            },
+          }));
         }
         // If rejected, keep MOCK_STATS already in state
         setIsLoading(false);

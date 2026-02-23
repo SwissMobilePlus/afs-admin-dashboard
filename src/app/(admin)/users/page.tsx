@@ -391,7 +391,7 @@ const MOCK_USERS: User[] = [
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 function getInitials(firstName: string, lastName: string): string {
-  return `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase();
+  return `${(firstName || '').charAt(0)}${(lastName || '').charAt(0)}`.toUpperCase() || '??';
 }
 
 function getRoleBadgeVariant(role: string): 'default' | 'secondary' | 'outline' | 'destructive' {
@@ -423,7 +423,7 @@ function getRoleLabel(role: string): string {
 const numberFormatter = new Intl.NumberFormat('fr-CH');
 
 function formatScore(score: number): string {
-  return numberFormatter.format(score);
+  return numberFormatter.format(score ?? 0);
 }
 
 // ── Component ────────────────────────────────────────────────────────────
@@ -481,14 +481,39 @@ export default function UsersPage() {
       if (planFilter !== 'all') params.set('plan', planFilter);
 
       const [result] = await Promise.allSettled([
-        get<UsersResponse>(`/admin/users?${params.toString()}`),
+        get<{ users: Record<string, unknown>[]; pagination: { total: number; totalPages: number } }>(`/admin/users?${params.toString()}`),
       ]);
 
       if (!cancelled) {
-        if (result.status === 'fulfilled' && result.value?.users) {
-          setUsers(result.value.users);
-          setTotal(result.value.total);
-          setTotalPages(result.value.totalPages);
+        if (result.status === 'fulfilled' && result.value?.users?.length > 0) {
+          // Map API user objects to frontend User interface
+          const mapped: User[] = result.value.users.map((u) => {
+            const nameStr = (u.name as string) || '';
+            const firstNameStr = (u.firstName as string) || '';
+            // Derive lastName: if "name" contains a space, take everything after firstName
+            const lastName = nameStr.includes(' ')
+              ? nameStr.replace(firstNameStr, '').trim()
+              : '';
+            const cantons = Array.isArray(u.cantons) ? (u.cantons as string[]) : [];
+            const sub = u.subscription as Record<string, unknown> | null;
+            return {
+              id: (u.id as string) || '',
+              firstName: firstNameStr || nameStr.split(' ')[0] || '',
+              lastName: lastName || (nameStr.split(' ').slice(1).join(' ') || ''),
+              email: (u.email as string) || '',
+              canton: cantons[0] || '',
+              cantonCode: cantons[0] || '',
+              plan: (sub?.status === 'active' ? 'premium' : 'free') as 'free' | 'premium',
+              role: (u.role as 'user' | 'admin' | 'support' | 'partner') || 'user',
+              swissReadyScore: 0, // Not returned by API yet
+              createdAt: (u.createdAt as string) || '',
+              isBanned: !!u.bannedAt,
+              phone: (u.phone as string) || undefined,
+            };
+          });
+          setUsers(mapped);
+          setTotal(result.value.pagination?.total ?? mapped.length);
+          setTotalPages(result.value.pagination?.totalPages ?? 1);
         } else {
           // Fallback to mock data
           let filtered = [...MOCK_USERS];
