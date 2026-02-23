@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import {
   ArrowLeft,
@@ -27,6 +27,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
+import { get } from '@/lib/api';
 
 // ── Canton & audience constants ──────────────────────────────────────────
 
@@ -63,27 +64,34 @@ export default function NewCampaignPage() {
   const [scheduleDate, setScheduleDate] = useState('');
   const [scheduleTime, setScheduleTime] = useState('');
 
+  const [audienceEstimate, setAudienceEstimate] = useState<number | null>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const toggleCanton = (canton: string) => {
     setSelectedCantons((prev) =>
       prev.includes(canton) ? prev.filter((c) => c !== canton) : [...prev, canton]
     );
   };
 
-  // Simulated audience estimation
-  const estimateAudience = () => {
-    let base = 8500;
-    if (selectedCantons.length > 0) {
-      base = selectedCantons.length * 710;
-    }
-    if (plan === 'premium') base = Math.round(base * 0.15);
-    if (plan === 'free') base = Math.round(base * 0.85);
-    if (seniority === 'lt7') base = Math.round(base * 0.12);
-    if (seniority === 'lt30') base = Math.round(base * 0.25);
-    if (seniority === 'gt30') base = Math.round(base * 0.63);
-    return base;
-  };
-
-  const audienceEstimate = estimateAudience();
+  // Fetch audience estimation from API
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(async () => {
+      try {
+        const params = new URLSearchParams();
+        if (selectedCantons.length > 0) params.set('cantons', selectedCantons.join(','));
+        if (plan !== 'all') params.set('plan', plan);
+        if (seniority === 'lt7') params.set('maxDaysOld', '7');
+        if (seniority === 'lt30') params.set('maxDaysOld', '30');
+        if (seniority === 'gt30') params.set('minDaysOld', '30');
+        const res = await get<{ count: number }>(`/admin/campaigns/estimate-audience?${params.toString()}`);
+        setAudienceEstimate(res.count);
+      } catch {
+        setAudienceEstimate(null);
+      }
+    }, 400);
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  }, [selectedCantons, plan, seniority]);
 
   return (
     <div className="flex flex-col gap-6">
@@ -238,7 +246,9 @@ export default function NewCampaignPage() {
                   <p className="text-xs text-muted-foreground">Basee sur les filtres selectionnes</p>
                 </div>
                 <Badge variant="secondary" className="ml-auto text-sm px-3 py-1">
-                  ~{audienceEstimate.toLocaleString('fr-CH')} utilisateurs
+                  {audienceEstimate != null
+                    ? `~${audienceEstimate.toLocaleString('fr-CH')} utilisateurs`
+                    : '—'}
                 </Badge>
               </div>
             </CardContent>

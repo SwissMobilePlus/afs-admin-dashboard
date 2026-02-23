@@ -76,137 +76,6 @@ interface Payment {
   statut: 'Payé' | 'En attente';
 }
 
-// ── Mock data factories ───────────────────────────────────────────────
-
-const mockPartnersMap: Record<string, PartnerDetail> = {
-  '1': {
-    id: '1',
-    nom: 'CA next bank',
-    categorie: 'Banque',
-    siteWeb: 'https://www.ca-nextbank.ch',
-    statut: 'Actif',
-    couleur: '#006a4e',
-    commissionType: 'CPA',
-    commissionRate: 25,
-    devise: 'CHF',
-    dateDebut: '2025-03-01',
-    clics: 3420,
-    conversions: 187,
-    revenue: 4675,
-    tauxConversion: 5.47,
-    description: 'Partenaire bancaire principal pour les comptes courants et cartes de crédit.',
-  },
-  '2': {
-    id: '2',
-    nom: 'UBS KeyClub',
-    categorie: 'Banque',
-    siteWeb: 'https://www.ubs.com',
-    statut: 'Actif',
-    couleur: '#e60000',
-    commissionType: 'CPL',
-    commissionRate: 20,
-    devise: 'CHF',
-    dateDebut: '2025-04-15',
-    clics: 2890,
-    conversions: 156,
-    revenue: 3120,
-    tauxConversion: 5.4,
-    description: 'Programme de fidélité UBS avec commissions sur les leads qualifiés.',
-  },
-  '3': {
-    id: '3',
-    nom: 'Alpian',
-    categorie: 'Banque',
-    siteWeb: 'https://www.alpian.com',
-    statut: 'Actif',
-    couleur: '#1a237e',
-    commissionType: 'Revenue Share',
-    commissionRate: 15,
-    devise: 'CHF',
-    dateDebut: '2025-06-01',
-    clics: 1560,
-    conversions: 89,
-    revenue: 2670,
-    tauxConversion: 5.71,
-    description: 'Banque digitale suisse avec gestion de patrimoine personnalisée.',
-  },
-  '4': {
-    id: '4',
-    nom: 'Yuh',
-    categorie: 'Banque',
-    siteWeb: 'https://www.yuh.com',
-    statut: 'Actif',
-    couleur: '#ff6600',
-    commissionType: 'CPA',
-    commissionRate: 25,
-    devise: 'CHF',
-    dateDebut: '2025-02-01',
-    clics: 4210,
-    conversions: 234,
-    revenue: 5850,
-    tauxConversion: 5.56,
-    description: 'Application bancaire mobile suisse - investissement et paiement.',
-  },
-  '5': {
-    id: '5',
-    nom: 'Baloise Assurance',
-    categorie: 'Assurance',
-    siteWeb: 'https://www.baloise.ch',
-    statut: 'Actif',
-    couleur: '#004990',
-    commissionType: 'CPL',
-    commissionRate: 30,
-    devise: 'CHF',
-    dateDebut: '2025-05-10',
-    clics: 980,
-    conversions: 45,
-    revenue: 1350,
-    tauxConversion: 4.59,
-    description: 'Solutions d\'assurance vie et non-vie pour particuliers.',
-  },
-  '6': {
-    id: '6',
-    nom: 'CSS Santé',
-    categorie: 'Assurance',
-    siteWeb: 'https://www.css.ch',
-    statut: 'Inactif',
-    couleur: '#00a651',
-    commissionType: 'Revenue Share',
-    commissionRate: 12,
-    devise: 'CHF',
-    dateDebut: '2025-07-01',
-    clics: 1230,
-    conversions: 67,
-    revenue: 2010,
-    tauxConversion: 5.45,
-    description: 'Assurance maladie et complémentaires santé.',
-  },
-};
-
-function generateDailyPerformance(): DailyPerformance[] {
-  const data: DailyPerformance[] = [];
-  const now = new Date();
-  for (let i = 29; i >= 0; i--) {
-    const d = new Date(now);
-    d.setDate(d.getDate() - i);
-    const day = d.toLocaleDateString('fr-CH', { day: '2-digit', month: '2-digit' });
-    const clics = Math.floor(80 + Math.random() * 80);
-    const conversions = Math.floor(clics * (0.04 + Math.random() * 0.03));
-    data.push({ jour: day, clics, conversions });
-  }
-  return data;
-}
-
-function generatePayments(): Payment[] {
-  return [
-    { id: '1', date: '2026-02-15', periode: 'Janvier 2026', montant: 1250, statut: 'Payé' },
-    { id: '2', date: '2026-01-15', periode: 'Décembre 2025', montant: 1180, statut: 'Payé' },
-    { id: '3', date: '2025-12-15', periode: 'Novembre 2025', montant: 1095, statut: 'Payé' },
-    { id: '4', date: '2025-11-15', periode: 'Octobre 2025', montant: 1020, statut: 'Payé' },
-    { id: '5', date: '2025-10-15', periode: 'Septembre 2025', montant: 960, statut: 'Payé' },
-    { id: '6', date: '2026-03-15', periode: 'Février 2026', montant: 1340, statut: 'En attente' },
-  ];
-}
 
 // ── Initials helper ───────────────────────────────────────────────────
 function getInitials(name: string) {
@@ -245,31 +114,60 @@ export default function PartnerDetailPage() {
   useEffect(() => {
     async function fetchPartner() {
       try {
-        const [partnerRes, analyticsRes] = await Promise.allSettled([
-          get<{ data: PartnerDetail }>(`/admin/partners/${partnerId}`),
-          get<{ data: { performance: DailyPerformance[]; payments: Payment[] } }>(
-            `/admin/partners/${partnerId}/analytics`,
-          ),
-        ]);
+        const res = await get<Record<string, unknown>>(`/admin/partners/${partnerId}/analytics`);
 
-        if (partnerRes.status === 'fulfilled' && partnerRes.value?.data) {
-          setPartner(partnerRes.value.data);
-        } else {
-          // Fallback to mock
-          setPartner(mockPartnersMap[partnerId] || mockPartnersMap['1']);
+        // Map partner object
+        const p = res.partner as Record<string, unknown> | undefined;
+        const totals = res.totals as Record<string, unknown> | undefined;
+        const service = p?.service as Record<string, unknown> | undefined;
+        const commissions = Array.isArray(p?.commissions) ? (p.commissions as Record<string, unknown>[]) : [];
+        const firstCommission = commissions[0];
+
+        if (p) {
+          setPartner({
+            id: (p.id as string) || partnerId,
+            nom: (p.name as string) || '',
+            categorie: (service?.title as string) || '',
+            siteWeb: '',
+            statut: p.active ? 'Actif' : 'Inactif',
+            couleur: '#3b82f6',
+            commissionType: (firstCommission?.type as string) || '',
+            commissionRate: (firstCommission?.rate as number) || 0,
+            devise: (firstCommission?.currency as string) || 'CHF',
+            dateDebut: (p.createdAt as string) || '',
+            clics: (totals?.clicks as number) || 0,
+            conversions: (totals?.conversions as number) || 0,
+            revenue: (totals?.revenue as number) || 0,
+            tauxConversion: (totals?.conversionRate as number) || 0,
+            description: '',
+          });
         }
 
-        if (analyticsRes.status === 'fulfilled' && analyticsRes.value?.data) {
-          setPerformance(analyticsRes.value.data.performance);
-          setPayments(analyticsRes.value.data.payments);
-        } else {
-          setPerformance(generateDailyPerformance());
-          setPayments(generatePayments());
-        }
+        // Map daily stats
+        const dailyStats = Array.isArray(res.dailyStats) ? (res.dailyStats as Record<string, unknown>[]) : [];
+        setPerformance(
+          dailyStats.map((d) => ({
+            jour: new Date(d.date as string).toLocaleDateString('fr-CH', { day: '2-digit', month: '2-digit' }),
+            clics: (d.clicks as number) || 0,
+            conversions: (d.conversions as number) || 0,
+          }))
+        );
+
+        // Map payouts
+        const payouts = Array.isArray(res.payouts) ? (res.payouts as Record<string, unknown>[]) : [];
+        setPayments(
+          payouts.map((pay) => ({
+            id: (pay.id as string) || '',
+            date: (pay.paidAt as string) || (pay.createdAt as string) || '',
+            periode: (pay.period as string) || '',
+            montant: (pay.amount as number) || 0,
+            statut: (pay.status === 'paid' ? 'Payé' : 'En attente') as 'Payé' | 'En attente',
+          }))
+        );
       } catch {
-        setPartner(mockPartnersMap[partnerId] || mockPartnersMap['1']);
-        setPerformance(generateDailyPerformance());
-        setPayments(generatePayments());
+        setPartner(null);
+        setPerformance([]);
+        setPayments([]);
       } finally {
         setLoading(false);
       }
@@ -279,10 +177,12 @@ export default function PartnerDetailPage() {
   }, [partnerId]);
 
   async function handlePayout() {
+    const pending = payments.find((p) => p.statut === 'En attente');
+    if (!pending) return;
     try {
       await post(`/admin/partners/${partnerId}/payout`, {
-        periode: 'Février 2026',
-        montant: 1340,
+        periode: pending.periode,
+        montant: pending.montant,
       });
     } catch {
       // Silently handle - UI already updated
@@ -505,6 +405,13 @@ export default function PartnerDetailPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
+                  {payments.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={4} className="h-24 text-center text-muted-foreground">
+                        Aucun paiement
+                      </TableCell>
+                    </TableRow>
+                  )}
                   {payments.map((payment) => (
                     <TableRow key={payment.id}>
                       <TableCell className="text-muted-foreground">

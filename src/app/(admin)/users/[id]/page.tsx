@@ -70,162 +70,32 @@ interface ActivityItem {
   timestamp: string;
 }
 
-// ── Mock Data ────────────────────────────────────────────────────────────
-const MOCK_USERS: Record<string, UserDetail> = {
-  '1': {
-    id: '1',
-    firstName: 'Jean-Pierre',
-    lastName: 'Müller',
-    email: 'jp.muller@gmail.com',
-    canton: 'Genève',
-    cantonCode: 'GE',
-    plan: 'premium',
-    role: 'user',
-    swissReadyScore: 87,
-    createdAt: '2025-03-15T10:30:00Z',
-    isBanned: false,
-    phone: '+41 22 301 45 67',
-    candidaturesSent: 24,
-    activeDays: 142,
-  },
-  '2': {
-    id: '2',
-    firstName: 'Sophie',
-    lastName: 'Durand',
-    email: 'sophie.durand@outlook.com',
-    canton: 'Vaud',
-    cantonCode: 'VD',
-    plan: 'premium',
-    role: 'user',
-    swissReadyScore: 92,
-    createdAt: '2025-04-02T14:15:00Z',
-    isBanned: false,
-    phone: '+41 21 654 32 10',
-    candidaturesSent: 31,
-    activeDays: 118,
-  },
-  '3': {
-    id: '3',
-    firstName: 'Marco',
-    lastName: 'Rossi',
-    email: 'marco.rossi@bluewin.ch',
-    canton: 'Bâle-Ville',
-    cantonCode: 'BS',
-    plan: 'free',
-    role: 'user',
-    swissReadyScore: 45,
-    createdAt: '2025-05-20T08:00:00Z',
-    isBanned: false,
-    phone: '+41 61 234 56 78',
-    candidaturesSent: 8,
-    activeDays: 56,
-  },
-  '4': {
-    id: '4',
-    firstName: 'Amélie',
-    lastName: 'Laurent',
-    email: 'amelie.laurent@proton.me',
-    canton: 'Genève',
-    cantonCode: 'GE',
-    plan: 'premium',
-    role: 'admin',
-    swissReadyScore: 95,
-    createdAt: '2024-11-10T09:45:00Z',
-    isBanned: false,
-    phone: '+41 22 789 01 23',
-    candidaturesSent: 45,
-    activeDays: 287,
-  },
-  '5': {
-    id: '5',
-    firstName: 'Thomas',
-    lastName: 'Favre',
-    email: 'thomas.favre@gmail.com',
-    canton: 'Vaud',
-    cantonCode: 'VD',
-    plan: 'free',
-    role: 'user',
-    swissReadyScore: 34,
-    createdAt: '2025-07-01T16:30:00Z',
-    isBanned: false,
-    candidaturesSent: 3,
-    activeDays: 22,
-  },
-};
-
-function getMockUser(id: string): UserDetail {
-  return (
-    MOCK_USERS[id] || {
-      id,
-      firstName: 'Nadia',
-      lastName: 'Benali',
-      email: 'nadia.benali@yahoo.fr',
-      canton: 'Genève',
-      cantonCode: 'GE',
-      plan: 'premium',
-      role: 'user',
-      swissReadyScore: 78,
-      createdAt: '2025-01-22T11:20:00Z',
-      isBanned: false,
-      phone: '+41 22 456 78 90',
-      candidaturesSent: 17,
-      activeDays: 95,
-    }
-  );
-}
-
-function getMockActivity(userId: string): ActivityItem[] {
-  const baseDate = new Date();
-  return [
-    {
-      id: `${userId}-a1`,
-      type: 'login',
-      description: 'Connexion depuis Genève (IP: 178.xxx.xxx.xxx)',
-      timestamp: new Date(baseDate.getTime() - 2 * 60 * 60 * 1000).toISOString(),
-    },
-    {
-      id: `${userId}-a2`,
-      type: 'candidature',
-      description: 'Candidature envoyée pour "Développeur Full-Stack" chez Nestlé SA',
-      timestamp: new Date(baseDate.getTime() - 8 * 60 * 60 * 1000).toISOString(),
-    },
-    {
-      id: `${userId}-a3`,
-      type: 'document',
-      description: 'CV mis à jour - version française',
-      timestamp: new Date(baseDate.getTime() - 24 * 60 * 60 * 1000).toISOString(),
-    },
-    {
-      id: `${userId}-a4`,
-      type: 'score',
-      description: 'Score SwissReady passé de 82% à 87%',
-      timestamp: new Date(baseDate.getTime() - 2 * 24 * 60 * 60 * 1000).toISOString(),
-    },
-    {
-      id: `${userId}-a5`,
-      type: 'candidature',
-      description: 'Candidature envoyée pour "Chef de projet" chez ABB Suisse',
-      timestamp: new Date(baseDate.getTime() - 3 * 24 * 60 * 60 * 1000).toISOString(),
-    },
-    {
-      id: `${userId}-a6`,
-      type: 'plan',
-      description: 'Passage au plan Premium',
-      timestamp: new Date(baseDate.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString(),
-    },
-    {
-      id: `${userId}-a7`,
-      type: 'profile',
-      description: 'Profil complété à 100%',
-      timestamp: new Date(baseDate.getTime() - 10 * 24 * 60 * 60 * 1000).toISOString(),
-    },
-    {
-      id: `${userId}-a8`,
-      type: 'login',
-      description: 'Première connexion - inscription via Google',
-      timestamp: new Date(baseDate.getTime() - 14 * 24 * 60 * 60 * 1000).toISOString(),
-    },
-  ];
+// ── API response mapping ────────────────────────────────────────────────
+function mapApiUser(u: Record<string, unknown>): UserDetail {
+  const nameStr = (u.name as string) || '';
+  const firstNameStr = (u.firstName as string) || '';
+  const lastName = nameStr.includes(' ')
+    ? nameStr.replace(firstNameStr, '').trim()
+    : '';
+  const cantons = Array.isArray(u.cantons) ? (u.cantons as string[]) : [];
+  const sub = u.subscription as Record<string, unknown> | null;
+  const counts = u._count as Record<string, number> | null;
+  return {
+    id: (u.id as string) || '',
+    firstName: firstNameStr || nameStr.split(' ')[0] || '',
+    lastName: lastName || (nameStr.split(' ').slice(1).join(' ') || ''),
+    email: (u.email as string) || '',
+    canton: cantons[0] || '',
+    cantonCode: cantons[0] || '',
+    plan: (sub?.status === 'active' ? 'premium' : 'free') as 'free' | 'premium',
+    role: (u.role as 'user' | 'admin' | 'support' | 'partner') || 'user',
+    swissReadyScore: 0,
+    createdAt: (u.createdAt as string) || '',
+    isBanned: !!u.bannedAt,
+    phone: (u.phone as string) || undefined,
+    candidaturesSent: counts?.applications ?? 0,
+    activeDays: 0,
+  };
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────
@@ -322,16 +192,15 @@ export default function UserDetailPage() {
     async function fetchUser() {
       setLoading(true);
       try {
-        const data = await get<UserDetail>(`/admin/users/${userId}`);
+        const data = await get<Record<string, unknown>>(`/admin/users/${userId}`);
         if (!cancelled) {
-          setUser(data);
-          setActivity(getMockActivity(userId));
+          setUser(mapApiUser(data));
+          setActivity([]);
         }
       } catch {
-        // Fallback to mock data
         if (!cancelled) {
-          setUser(getMockUser(userId));
-          setActivity(getMockActivity(userId));
+          setUser(null);
+          setActivity([]);
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -620,40 +489,47 @@ export default function UserDetailPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="relative space-y-0">
-                {activity.map((item, index) => (
-                  <div key={item.id} className="flex gap-4 pb-6 last:pb-0">
-                    {/* Timeline line */}
-                    <div className="flex flex-col items-center">
-                      <div
-                        className={`flex size-8 shrink-0 items-center justify-center rounded-full ${getActivityColor(
-                          item.type
-                        )}`}
-                      >
-                        {getActivityIcon(item.type)}
+              {activity.length === 0 ? (
+                <div className="flex flex-col items-center gap-2 py-8 text-muted-foreground">
+                  <Activity className="size-8" />
+                  <p className="text-sm">Aucune activite recente</p>
+                </div>
+              ) : (
+                <div className="relative space-y-0">
+                  {activity.map((item, index) => (
+                    <div key={item.id} className="flex gap-4 pb-6 last:pb-0">
+                      {/* Timeline line */}
+                      <div className="flex flex-col items-center">
+                        <div
+                          className={`flex size-8 shrink-0 items-center justify-center rounded-full ${getActivityColor(
+                            item.type
+                          )}`}
+                        >
+                          {getActivityIcon(item.type)}
+                        </div>
+                        {index < activity.length - 1 && (
+                          <div className="mt-1 w-px flex-1 bg-border" />
+                        )}
                       </div>
-                      {index < activity.length - 1 && (
-                        <div className="mt-1 w-px flex-1 bg-border" />
-                      )}
-                    </div>
 
-                    {/* Content */}
-                    <div className="flex-1 pt-1">
-                      <p className="text-sm leading-relaxed">{item.description}</p>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {formatDistanceToNow(new Date(item.timestamp), {
-                          addSuffix: true,
-                          locale: fr,
-                        })}
-                        {' — '}
-                        {format(new Date(item.timestamp), 'dd MMM yyyy, HH:mm', {
-                          locale: fr,
-                        })}
-                      </p>
+                      {/* Content */}
+                      <div className="flex-1 pt-1">
+                        <p className="text-sm leading-relaxed">{item.description}</p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {formatDistanceToNow(new Date(item.timestamp), {
+                            addSuffix: true,
+                            locale: fr,
+                          })}
+                          {' — '}
+                          {format(new Date(item.timestamp), 'dd MMM yyyy, HH:mm', {
+                            locale: fr,
+                          })}
+                        </p>
+                      </div>
                     </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>

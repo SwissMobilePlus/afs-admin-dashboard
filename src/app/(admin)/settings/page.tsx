@@ -88,31 +88,56 @@ interface AdminUser {
   avatar: string;
 }
 
-// ── API response types ───────────────────────────────────────────────────
+// ── API response types (matching actual backend responses) ───────────────
 
 interface ApiFlagResponse {
+  id: string;
   key: string;
-  label: string;
-  description: string;
+  description: string | null;
   enabled: boolean;
   percentage: number;
+  targetRoles: string[] | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
-interface ApiAuditResponse {
+interface ApiAuditAdmin {
   id: string;
-  createdAt: string;
-  admin: string;
+  email: string;
+  name: string | null;
+  firstName: string | null;
+}
+
+interface ApiAuditLogEntry {
+  id: string;
+  adminId: string;
+  admin: ApiAuditAdmin;
   action: string;
-  target: string;
-  details: string;
+  target: string;      // Entity type: "User", "FeatureFlag", "Partner", etc.
+  targetId: string | null;
+  metadata: Record<string, unknown> | null;
+  ip: string | null;
+  createdAt: string;
+}
+
+interface ApiAuditLogResponse {
+  logs: ApiAuditLogEntry[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
 }
 
 interface ApiAdminResponse {
   id: string;
-  name: string;
   email: string;
+  name: string | null;
+  firstName: string | null;
   role: 'super_admin' | 'admin' | 'support';
-  lastLoginAt: string;
+  lastActiveAt: string | null;
+  createdAt: string;
 }
 
 // ── Icon mapping for feature flags ───────────────────────────────────────
@@ -125,95 +150,31 @@ const flagIconMap: Record<string, React.ComponentType<{ className?: string }>> =
   swiss_ready_score: Award,
 };
 
-// ── Mock data (fallback) ─────────────────────────────────────────────────
-
-const MOCK_FLAGS: FeatureFlag[] = [
-  {
-    key: 'premium_features',
+// Local mapping: flag key -> human-readable label and description (in French)
+// The Prisma FeatureFlag model has no `label` column, so we maintain these locally.
+const flagLabelMap: Record<string, { label: string; description: string }> = {
+  premium_features: {
     label: 'Fonctionnalites Premium',
     description: 'Active les fonctionnalites reservees aux abonnes Premium (score SwissReady avance, candidatures illimitees)',
-    enabled: true,
-    percentage: 100,
-    icon: Sparkles,
   },
-  {
-    key: 'ai_assistant',
+  ai_assistant: {
     label: 'Assistant IA',
     description: 'Active l\'assistant IA pour l\'aide a la redaction de CV et la preparation aux entretiens',
-    enabled: true,
-    percentage: 75,
-    icon: Bot,
   },
-  {
-    key: 'job_alerts',
+  job_alerts: {
     label: 'Alertes Emploi',
     description: 'Permet aux utilisateurs de configurer des alertes push et email pour les nouvelles offres correspondant a leurs criteres',
-    enabled: true,
-    percentage: 100,
-    icon: Bell,
   },
-  {
-    key: 'partner_offers',
+  partner_offers: {
     label: 'Offres Partenaires',
     description: 'Affiche les offres et promotions des partenaires dans la section dediee de l\'application',
-    enabled: false,
-    percentage: 0,
-    icon: Handshake,
   },
-  {
-    key: 'swiss_ready_score',
+  swiss_ready_score: {
     label: 'Score SwissReady',
     description: 'Calcule et affiche un score de compatibilite avec le marche de l\'emploi suisse base sur le profil de l\'utilisateur',
-    enabled: true,
-    percentage: 50,
-    icon: Award,
   },
-];
+};
 
-const MOCK_AUDIT: AuditEntry[] = [
-  { id: '1', date: '2026-02-23T09:30:00', admin: 'Marc Dubois', action: 'settings.update', target: 'feature_flags.ai_assistant', details: 'Pourcentage modifie de 50% a 75%' },
-  { id: '2', date: '2026-02-23T09:15:00', admin: 'Marc Dubois', action: 'user.update', target: 'sophie.martin@gmail.com', details: 'Mot de passe reinitialise' },
-  { id: '3', date: '2026-02-22T18:45:00', admin: 'Marie Laurent', action: 'campaign.create', target: 'Nouvelles offres premium', details: 'Campagne push creee, audience: 3420' },
-  { id: '4', date: '2026-02-22T16:00:00', admin: 'Marie Laurent', action: 'partner.create', target: 'FormationPro SA', details: 'Nouveau partenaire ajoute' },
-  { id: '5', date: '2026-02-22T14:30:00', admin: 'Marc Dubois', action: 'user.ban', target: 'spam.user@test.com', details: 'Compte desactive pour spam' },
-  { id: '6', date: '2026-02-22T11:00:00', admin: 'Marc Dubois', action: 'settings.update', target: 'feature_flags.swiss_ready_score', details: 'Active avec rollout a 50%' },
-  { id: '7', date: '2026-02-21T17:20:00', admin: 'Marie Laurent', action: 'campaign.send', target: 'Marche de l\'emploi suisse', details: 'Campagne email envoyee a 5200 utilisateurs' },
-  { id: '8', date: '2026-02-21T15:00:00', admin: 'Marc Dubois', action: 'user.update', target: 'thomas.k@bluewin.ch', details: 'Plan passe de Free a Premium' },
-  { id: '9', date: '2026-02-21T10:30:00', admin: 'Admin System', action: 'jobs.import', target: 'Import automatique', details: '142 offres importees depuis JobScout24' },
-  { id: '10', date: '2026-02-20T18:00:00', admin: 'Marie Laurent', action: 'partner.update', target: 'SwissInsurance AG', details: 'Commission modifiee de 15% a 18%' },
-  { id: '11', date: '2026-02-20T14:15:00', admin: 'Marc Dubois', action: 'campaign.create', target: 'Alerte emploi Geneve', details: 'Campagne push creee, audience: 1950' },
-  { id: '12', date: '2026-02-20T09:00:00', admin: 'Admin System', action: 'jobs.import', target: 'Import automatique', details: '118 offres importees depuis Indeed' },
-  { id: '13', date: '2026-02-19T16:30:00', admin: 'Marie Laurent', action: 'user.update', target: 'elena.p@yahoo.com', details: 'Remboursement de 9.90 CHF effectue' },
-  { id: '14', date: '2026-02-19T11:00:00', admin: 'Marc Dubois', action: 'settings.update', target: 'feature_flags.partner_offers', details: 'Fonctionnalite desactivee temporairement' },
-  { id: '15', date: '2026-02-18T14:00:00', admin: 'Marc Dubois', action: 'admin.invite', target: 'new.support@afs-app.ch', details: 'Invitation envoyee, role: support' },
-];
-
-const MOCK_ADMINS: AdminUser[] = [
-  {
-    id: '1',
-    name: 'Marc Dubois',
-    email: 'marc.dubois@afs-app.ch',
-    role: 'super_admin',
-    lastAccess: '2026-02-23T09:30:00',
-    avatar: 'MD',
-  },
-  {
-    id: '2',
-    name: 'Marie Laurent',
-    email: 'marie.laurent@afs-app.ch',
-    role: 'admin',
-    lastAccess: '2026-02-22T18:45:00',
-    avatar: 'ML',
-  },
-  {
-    id: '3',
-    name: 'Pierre Favre',
-    email: 'pierre.favre@afs-app.ch',
-    role: 'support',
-    lastAccess: '2026-02-21T12:00:00',
-    avatar: 'PF',
-  },
-];
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -226,15 +187,23 @@ function generateAvatar(name: string): string {
 }
 
 const actionLabels: Record<string, { label: string; color: string }> = {
+  // Original mock action names (kept for fallback compatibility)
   'settings.update': { label: 'Parametres', color: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400' },
   'user.update': { label: 'Utilisateur', color: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400' },
   'user.ban': { label: 'Ban', color: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400' },
+  'user.unban': { label: 'Unban', color: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400' },
   'campaign.create': { label: 'Campagne', color: 'bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-400' },
   'campaign.send': { label: 'Envoi', color: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400' },
   'partner.create': { label: 'Partenaire', color: 'bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-400' },
   'partner.update': { label: 'Partenaire', color: 'bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-400' },
   'jobs.import': { label: 'Import', color: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400' },
   'admin.invite': { label: 'Admin', color: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-400' },
+  // Actual backend action names (from admin.service.ts / admin-settings.controller.ts)
+  'settings.feature_flag_create': { label: 'Flag cree', color: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400' },
+  'settings.feature_flag_update': { label: 'Flag modifie', color: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400' },
+  'user.role_change': { label: 'Role', color: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400' },
+  'admin.invite_create': { label: 'Invitation', color: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-400' },
+  'admin.invite_upgrade': { label: 'Promotion', color: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-400' },
 };
 
 const roleLabels: Record<string, { label: string; color: string }> = {
@@ -246,9 +215,9 @@ const roleLabels: Record<string, { label: string; color: string }> = {
 // ── Page Component ───────────────────────────────────────────────────────
 
 export default function SettingsPage() {
-  const [flags, setFlags] = useState<FeatureFlag[]>(MOCK_FLAGS);
-  const [auditEntries, setAuditEntries] = useState<AuditEntry[]>(MOCK_AUDIT);
-  const [adminUsers, setAdminUsers] = useState<AdminUser[]>(MOCK_ADMINS);
+  const [flags, setFlags] = useState<FeatureFlag[]>([]);
+  const [auditEntries, setAuditEntries] = useState<AuditEntry[]>([]);
+  const [adminUsers, setAdminUsers] = useState<AdminUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [inviteEmail, setInviteEmail] = useState('');
@@ -260,50 +229,100 @@ export default function SettingsPage() {
     async function fetchAll() {
       const [flagsResult, auditResult, adminsResult] = await Promise.allSettled([
         get<ApiFlagResponse[]>('/admin/settings/feature-flags'),
-        get<{ data: ApiAuditResponse[] }>('/admin/audit-log'),
+        get<ApiAuditLogResponse>('/admin/audit-log?limit=50'),
         get<ApiAdminResponse[]>('/admin/settings/admins'),
       ]);
 
+      // ── Feature Flags: merge API data with local label/description mapping ──
       if (flagsResult.status === 'fulfilled') {
         const apiFlags = flagsResult.value;
         setFlags(
-          apiFlags.map((f) => ({
-            key: f.key,
-            label: f.label,
-            description: f.description,
-            enabled: f.enabled,
-            percentage: f.percentage,
-            icon: flagIconMap[f.key] || Flag,
-          }))
+          apiFlags.map((f) => {
+            const local = flagLabelMap[f.key];
+            return {
+              key: f.key,
+              label: local?.label ?? f.key,
+              description: local?.description ?? f.description ?? '',
+              enabled: f.enabled,
+              percentage: f.percentage,
+              icon: flagIconMap[f.key] || Flag,
+            };
+          })
         );
       }
 
+      // ── Audit Log: backend returns { logs: [...], pagination: {...} } ──
+      // Each log entry has admin as object { id, email, name, firstName }
+      // and metadata (JSON) instead of details
       if (auditResult.status === 'fulfilled') {
         const apiAudit = auditResult.value;
-        const entries = Array.isArray(apiAudit) ? apiAudit : apiAudit.data;
+        const logs = apiAudit.logs ?? [];
         setAuditEntries(
-          entries.map((e) => ({
-            id: e.id,
-            date: e.createdAt,
-            admin: e.admin,
-            action: e.action,
-            target: e.target,
-            details: e.details,
-          }))
+          logs.map((e) => {
+            // Build admin display name from the admin object
+            const adminName = [e.admin?.firstName, e.admin?.name]
+              .filter(Boolean)
+              .join(' ') || e.admin?.email || 'Inconnu';
+
+            // Build target display: use targetId if available, otherwise the entity type
+            const targetDisplay = e.targetId
+              ? (e.metadata?.email as string) ?? (e.metadata?.key as string) ?? e.targetId
+              : e.target;
+
+            // Build details string from metadata JSON
+            let details = '';
+            if (e.metadata && typeof e.metadata === 'object') {
+              const meta = e.metadata as Record<string, unknown>;
+              // Try to build a meaningful summary from common metadata fields
+              const parts: string[] = [];
+              if (meta.reason) parts.push(String(meta.reason));
+              if (meta.previousRole && meta.newRole) {
+                parts.push(`Role: ${meta.previousRole} -> ${meta.newRole}`);
+              }
+              if (meta.previousState && meta.newState) {
+                const prev = meta.previousState as Record<string, unknown>;
+                const next = meta.newState as Record<string, unknown>;
+                if (prev.enabled !== undefined && next.enabled !== undefined) {
+                  parts.push(`enabled: ${prev.enabled} -> ${next.enabled}`);
+                }
+                if (prev.percentage !== undefined && next.percentage !== undefined) {
+                  parts.push(`pourcentage: ${prev.percentage}% -> ${next.percentage}%`);
+                }
+              }
+              if (meta.role) parts.push(`Role: ${meta.role}`);
+              if (meta.email && !parts.length) parts.push(String(meta.email));
+              if (meta.userEmail && !parts.length) parts.push(String(meta.userEmail));
+              details = parts.length > 0 ? parts.join(', ') : JSON.stringify(meta);
+            }
+
+            return {
+              id: e.id,
+              date: e.createdAt,
+              admin: adminName,
+              action: e.action,
+              target: targetDisplay,
+              details,
+            };
+          })
         );
       }
 
+      // ── Admin List: backend returns array of admin users ──
+      // User model has lastActiveAt (not lastLoginAt), name and firstName are nullable
       if (adminsResult.status === 'fulfilled') {
         const apiAdmins = adminsResult.value;
         setAdminUsers(
-          apiAdmins.map((a) => ({
-            id: a.id,
-            name: a.name,
-            email: a.email,
-            role: a.role,
-            lastAccess: a.lastLoginAt,
-            avatar: generateAvatar(a.name),
-          }))
+          apiAdmins.map((a) => {
+            const displayName = [a.firstName, a.name].filter(Boolean).join(' ') || a.email;
+            return {
+              id: a.id,
+              name: displayName,
+              email: a.email,
+              role: a.role,
+              lastAccess: a.lastActiveAt ?? a.createdAt,
+              avatar: generateAvatar(displayName),
+            };
+          })
         );
       }
 
@@ -387,14 +406,17 @@ export default function SettingsPage() {
       try {
         const apiAdmins = await get<ApiAdminResponse[]>('/admin/settings/admins');
         setAdminUsers(
-          apiAdmins.map((a) => ({
-            id: a.id,
-            name: a.name,
-            email: a.email,
-            role: a.role,
-            lastAccess: a.lastLoginAt,
-            avatar: generateAvatar(a.name),
-          }))
+          apiAdmins.map((a) => {
+            const displayName = [a.firstName, a.name].filter(Boolean).join(' ') || a.email;
+            return {
+              id: a.id,
+              name: displayName,
+              email: a.email,
+              role: a.role,
+              lastAccess: a.lastActiveAt ?? a.createdAt,
+              avatar: generateAvatar(displayName),
+            };
+          })
         );
       } catch {
         // If refresh fails, keep current list — the invite still succeeded
@@ -446,6 +468,12 @@ export default function SettingsPage() {
             </CardHeader>
             <CardContent>
               <div className="divide-y">
+                {flags.length === 0 && !loading && (
+                  <div className="flex flex-col items-center gap-2 py-8 text-muted-foreground">
+                    <Flag className="h-8 w-8" />
+                    <p className="text-sm">Aucun feature flag</p>
+                  </div>
+                )}
                 {flags.map((flag) => {
                   const Icon = flag.icon;
                   return (
@@ -516,6 +544,13 @@ export default function SettingsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
+                {auditEntries.length === 0 && !loading && (
+                  <TableRow>
+                    <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
+                      Aucune entree dans le journal
+                    </TableCell>
+                  </TableRow>
+                )}
                 {auditEntries.map((entry) => {
                   const actionInfo = actionLabels[entry.action] || { label: entry.action, color: 'bg-gray-100 text-gray-700' };
                   return (
@@ -615,6 +650,13 @@ export default function SettingsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
+                {adminUsers.length === 0 && !loading && (
+                  <TableRow>
+                    <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
+                      Aucun administrateur
+                    </TableCell>
+                  </TableRow>
+                )}
                 {adminUsers.map((admin) => {
                   const roleInfo = roleLabels[admin.role];
                   return (
