@@ -14,6 +14,8 @@ import {
   CheckCircle2,
   AlertCircle,
   Loader2,
+  Trash2,
+  Mail,
 } from 'lucide-react';
 import {
   BarChart,
@@ -162,6 +164,9 @@ function TableSkeleton() {
 
 export default function JobsPage() {
   const [isImporting, setIsImporting] = useState(false);
+  const [isClearing, setIsClearing] = useState(false);
+  const [isEnriching, setIsEnriching] = useState(false);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
   const [stats, setStats] = useState<JobsStats>(EMPTY_STATS);
@@ -246,12 +251,35 @@ export default function JobsPage() {
   const handleImport = async () => {
     setIsImporting(true);
     try {
-      await post('/jobs/import');
+      await post('/admin/jobs/import');
     } catch {
       // Silently handle — the import is fire-and-forget on the backend too
     } finally {
-      // Keep the spinner for a minimum of 2s for UX feedback
       setTimeout(() => setIsImporting(false), 2000);
+    }
+  };
+
+  const handleClear = async () => {
+    setShowClearConfirm(false);
+    setIsClearing(true);
+    try {
+      await post('/admin/jobs/clear');
+      setStats((prev) => ({ ...prev, totalActive: 0, importedToday: 0 }));
+    } catch {
+      // ignore
+    } finally {
+      setTimeout(() => setIsClearing(false), 1500);
+    }
+  };
+
+  const handleEnrich = async () => {
+    setIsEnriching(true);
+    try {
+      await post('/admin/jobs/enrich-emails');
+    } catch {
+      // ignore
+    } finally {
+      setTimeout(() => setIsEnriching(false), 2000);
     }
   };
 
@@ -293,20 +321,74 @@ export default function JobsPage() {
             Suivez les offres d&apos;emploi importees et la couverture par canton
           </p>
         </div>
-        <Button onClick={handleImport} disabled={isImporting}>
-          {isImporting ? (
-            <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Importation...
-            </>
-          ) : (
-            <>
-              <RefreshCw className="mr-2 h-4 w-4" />
-              Lancer importation
-            </>
-          )}
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="destructive"
+            onClick={() => setShowClearConfirm(true)}
+            disabled={isClearing}
+          >
+            {isClearing ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Suppression...
+              </>
+            ) : (
+              <>
+                <Trash2 className="mr-2 h-4 w-4" />
+                Vider les offres
+              </>
+            )}
+          </Button>
+          <Button variant="outline" onClick={handleEnrich} disabled={isEnriching}>
+            {isEnriching ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Enrichissement...
+              </>
+            ) : (
+              <>
+                <Mail className="mr-2 h-4 w-4" />
+                Enrichir emails
+              </>
+            )}
+          </Button>
+          <Button onClick={handleImport} disabled={isImporting}>
+            {isImporting ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Importation...
+              </>
+            ) : (
+              <>
+                <RefreshCw className="mr-2 h-4 w-4" />
+                Lancer importation
+              </>
+            )}
+          </Button>
+        </div>
       </div>
+
+      {/* Clear confirmation dialog */}
+      {showClearConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="rounded-lg bg-background border p-6 shadow-xl max-w-md w-full mx-4">
+            <h2 className="text-lg font-semibold mb-2">Confirmer la suppression</h2>
+            <p className="text-sm text-muted-foreground mb-4">
+              Cette action va supprimer toutes les offres d&apos;emploi, les candidatures associees
+              et les etats utilisateur. Cette action est irreversible.
+            </p>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setShowClearConfirm(false)}>
+                Annuler
+              </Button>
+              <Button variant="destructive" onClick={handleClear}>
+                <Trash2 className="mr-2 h-4 w-4" />
+                Confirmer la suppression
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* KPI cards */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
