@@ -1,8 +1,10 @@
 import axios, { AxiosRequestConfig, AxiosResponse } from 'axios';
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL ||
-  'https://afs-api-production.up.railway.app/api/v1';
+// Ensure the base URL always ends with /api/v1
+const rawUrl = process.env.NEXT_PUBLIC_API_URL || 'https://afs-api-production.up.railway.app';
+const API_BASE_URL = rawUrl.endsWith('/api/v1')
+  ? rawUrl
+  : `${rawUrl.replace(/\/+$/, '')}/api/v1`;
 
 // Callback for auth invalidation (set by auth store to avoid circular deps)
 let onAuthInvalidated: (() => void) | null = null;
