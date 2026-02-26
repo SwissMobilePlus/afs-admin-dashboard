@@ -11,6 +11,7 @@ import {
   Megaphone,
   MessageSquare,
   Briefcase,
+  Building2,
   Settings,
   LogOut,
   ChevronLeft,
@@ -35,6 +36,7 @@ const navItems: NavItem[] = [
   { label: 'Marketing', href: '/marketing', icon: Megaphone },
   { label: 'Support', href: '/support', icon: MessageSquare },
   { label: 'Emplois', href: '/jobs', icon: Briefcase },
+  { label: 'Entreprises', href: '/companies', icon: Building2 },
   { label: 'Paramètres', href: '/settings', icon: Settings },
 ];
 
